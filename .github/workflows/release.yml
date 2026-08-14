@@ -2,7 +2,7 @@ name: Release
 
 on:
   pull_request:
-    types: [opened, synchronize, labeled, unlabeled]
+    types: [opened, synchronize, labeled, unlabeled, closed]
     branches: [main]
 
 jobs:
