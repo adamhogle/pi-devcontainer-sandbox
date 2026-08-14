@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Test output / coverage
+coverage/
+htmlcov/
+.vitest/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE / editor
+.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Build output
+dist/
+build/

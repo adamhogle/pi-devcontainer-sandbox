@@ -1,0 +1,24 @@
+{
+  "name": "pi-devcontainer-sandbox — dev-container extension",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "typescript.tsdk": "/usr/local/share/npm-global/lib/node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true
+      }
+    }
+  },
+  "postCreateCommand": "npm install",
+  "containerEnv": {
+    "PI_EXTENSION_DIR": "${containerWorkspaceFolder}/extensions/dev-container-sandbox"
+  },
+  "remoteUser": "node",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/workspaces/pi-sandbox/node_modules/.bin"
+  }
+}
