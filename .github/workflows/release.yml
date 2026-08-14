@@ -35,20 +35,15 @@ jobs:
           # Get PR labels from event payload (not gh CLI — GITHUB_TOKEN
           # on pull_request events can't query GraphQL for PR metadata).
           # Inline python to extract label names from the event JSON.
-          echo '${{ toJSON(github.event.pull_request.labels) }}' | python3 -c "
-import json, sys
-labels = json.load(sys.stdin)
-for label in labels:
-    print(label['name'])
-" > /tmp/pr-labels.txt
-          PR_LABELS=$(cat /tmp/pr-labels.txt)
+          LABELS_JSON='${{ toJSON(github.event.pull_request.labels) }}'
+          PR_LABELS=$(echo "$LABELS_JSON" | python3 -c "import json,sys; [print(l['name']) for l in json.load(sys.stdin)]")
           echo "Labels:"
           echo "$PR_LABELS"
 
           # Count release labels
           RELEASE_LABELS=$(echo "$PR_LABELS" | grep -c -E '^release-(major|minor|patch)$' || true)
           if [ "$RELEASE_LABELS" -gt 1 ]; then
-            echo "❌ Multiple release labels found — use exactly one of: release-major, release-minor, release-patch"
+            echo "Multiple release labels found — use exactly one of: release-major, release-minor, release-patch"
             exit 1
           fi
 
@@ -56,11 +51,11 @@ for label in labels:
           if [ "$RELEASE_LABELS" -eq 0 ]; then
             MAIN_VERSION=$(git show origin/main:package.json 2>/dev/null | node -p "require('fs').readFileSync('/dev/stdin','utf8') ? JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version : '0.0.0'")
             if [ "$PR_VERSION" != "$MAIN_VERSION" ]; then
-              echo "❌ Version changed ($MAIN_VERSION → $PR_VERSION) but no release label found"
+              echo "Version changed ($MAIN_VERSION → $PR_VERSION) but no release label found"
               echo "   Add one of: release-major, release-minor, release-patch"
               exit 1
             fi
-            echo "✅ No version change — OK"
+            echo "No version change — OK"
             exit 0
           fi
 
@@ -71,8 +66,7 @@ for label in labels:
 
           # Compute expected version from latest tag
           if [ -z "$LATEST_TAG" ]; then
-            # No previous tag — any version is valid for first release
-            echo "✅ First release — version $PR_VERSION is valid"
+            echo "First release — version $PR_VERSION is valid"
             exit 0
           fi
 
@@ -93,11 +87,11 @@ for label in labels:
           esac
 
           if [ "$PR_VERSION" != "$EXPECTED" ]; then
-            echo "❌ Version mismatch: expected $EXPECTED for label $LABEL, got $PR_VERSION"
+            echo "Version mismatch: expected $EXPECTED for label $LABEL, got $PR_VERSION"
             exit 1
           fi
 
-          echo "✅ Version bump verified: $LATEST → $PR_VERSION ($BUMP_TYPE)"
+          echo "Version bump verified: $LATEST → $PR_VERSION ($BUMP_TYPE)"
 
   # ── Post-merge: create git tag + GitHub release ──────────────────────────
   tag-and-release:
@@ -107,12 +101,6 @@ for label in labels:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Debug event info
-        run: |
-          echo "Event name: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "SHA: ${{ github.sha }}"
 
       - name: Read version from package.json
         id: version
