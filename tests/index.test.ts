@@ -194,7 +194,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -249,7 +249,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -314,7 +314,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -354,7 +354,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -384,7 +384,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -414,7 +414,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
@@ -461,7 +461,7 @@ describe("extension entry point (index.ts)", () => {
         (c) => c.args[0] === "inspect",
         {
           stdout: JSON.stringify([
-            { Source: "/workspaces/pi-sandbox", Destination: "/workspace", Type: "bind" },
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
           ]),
         },
       );
