@@ -18,3 +18,8 @@ This file is loaded by pi as a context file. For contributing guidelines, see [C
 2. **Path mapping lives in operations** — `index.ts` never translates paths explicitly.
 3. **localCwd as tool cwd** — Always use the host cwd, not the container cwd, for tool factories.
 4. **No double translation** — Pass raw host paths to operation factories; they translate internally.
+
+## Guardrails
+
+- **Never modify `.github/workflows/` files without asking me first.** Show me the proposed changes and wait for my approval before committing or pushing any workflow changes.
+- This applies to any CI/CD configuration, action updates, or workflow additions.

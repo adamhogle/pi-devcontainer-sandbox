@@ -19,7 +19,6 @@ const mock = vi.hoisted(() => {
       const call = { command, args: [...args] };
       calls.push(call);
 
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const EventEmitter = require("node:events").EventEmitter;
       const child = new EventEmitter();
       child.pid = 12345;
@@ -27,10 +26,10 @@ const mock = vi.hoisted(() => {
       child.kill = () => { child.killed = true; };
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
-      let stdout = "", stderr = "", exitCode = 0, matched = false;
+      let stdout = "", stderr = "", exitCode = 0, _matched = false;
       for (const r of responders) {
         if (r.matcher(call)) {
-          stdout = r.stdout; stderr = r.stderr; exitCode = r.exitCode; matched = true; break;
+          stdout = r.stdout; stderr = r.stderr; exitCode = r.exitCode; _matched = true; break;
         }
       }
       setTimeout(() => {
