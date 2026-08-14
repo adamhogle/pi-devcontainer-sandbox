@@ -8,6 +8,7 @@ on:
 jobs:
   # ── PR validation: verify version bump matches label ─────────────────────
   pr-check:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
