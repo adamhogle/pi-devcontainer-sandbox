@@ -7,17 +7,25 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  devcontainer-ci:
     name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and run inside dev container
+      - name: Build devcontainer and run tests
         uses: devcontainers/action@v1
         with:
           runCmd: |
             npm ci
             npm run lint
             npm test
+            npm run test:coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
