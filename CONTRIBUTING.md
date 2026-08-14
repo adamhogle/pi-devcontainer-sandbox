@@ -37,7 +37,7 @@ pi-devcontainer-sandbox/
 │   │   ├── grep.test.ts
 │   │   └── inspect.test.ts
 │   └── index.test.ts
-├── .github/workflows/release.yml       # Release (version check + tag on merge)
+├── .github/workflows/tag-release.yml       # Release (version check + tag on merge)
 ├── package.json
 ├── CHANGELOG.md                        # Release history
 ├── CONTRIBUTING.md                     # This file

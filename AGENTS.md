@@ -29,4 +29,4 @@ This file is loaded by pi as a context file. For contributing guidelines, see [C
 
 - **Never modify `.github/workflows/` files without asking me first.** Show me the proposed changes and wait for my approval before committing or pushing any workflow changes.
 - This applies to any CI/CD configuration, action updates, or workflow additions.
-- See `.github/workflows/release.yml` for the new release workflow being introduced in this PR.
+- See `.github/workflows/tag-release.yml` for the new release workflow being introduced in this PR.

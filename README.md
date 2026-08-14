@@ -140,7 +140,7 @@ npm run test:coverage  # Code coverage report
 ```
 pi-sandbox/
 ├── .github/workflows/ci.yml     # CI (build + test on push/PR)
-├── .github/workflows/release.yml # Release (version check + tag on merge)
+├── .github/workflows/tag-release.yml # Release (version check + tag on merge)
 ├── extensions/dev-container-sandbox/
 │   ├── index.ts                  # Extension entry point
 │   └── operations.ts             # Podman operation backends

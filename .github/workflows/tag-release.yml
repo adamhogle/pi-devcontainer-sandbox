@@ -1,12 +1,96 @@
 name: Release
+
 on:
   pull_request:
     types: [opened, synchronize, labeled, unlabeled, closed]
     branches: [main]
 
 jobs:
-  test-trigger:
-    if: github.event_name == 'pull_request'
+  pr-check:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Workflow triggered by ${{ github.event_name }} action=${{ github.event.action }}"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version bump
+        run: |
+          set -euo pipefail
+          git fetch origin main 2>/dev/null || true
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+          echo "Latest tag: ${LATEST_TAG:-none}"
+          PR_VERSION=$(node -p "require('./package.json').version")
+          echo "PR version: $PR_VERSION"
+          LABELS_JSON='${{ toJSON(github.event.pull_request.labels) }}'
+          if [ -z "$LABELS_JSON" ] || [ "$LABELS_JSON" = "null" ]; then
+            LABELS_JSON='[]'
+          fi
+          PR_LABELS=$(echo "$LABELS_JSON" | python3 -c "import json,sys; [print(l['name']) for l in json.load(sys.stdin)]" 2>/dev/null || echo "")
+          echo "Labels: '${PR_LABELS:-}'"
+          RELEASE_LABELS=$(echo "$PR_LABELS" | grep -c -E '^release-(major|minor|patch)$' || true)
+          if [ "$RELEASE_LABELS" -gt 1 ]; then
+            echo "Multiple release labels"
+            exit 1
+          fi
+          if [ "$RELEASE_LABELS" -eq 0 ]; then
+            MAIN_VERSION=$(git show origin/main:package.json 2>/dev/null | node -p "
+const fs = require('fs');
+try {
+  const input = fs.readFileSync('/dev/stdin', 'utf8').trim();
+  if (!input) { process.stdout.write('0.0.0'); }
+  else { const p = JSON.parse(input); process.stdout.write(p.version || '0.0.0'); }
+} catch(e) { process.stdout.write('0.0.0'); }
+")
+            if [ "$PR_VERSION" != "$MAIN_VERSION" ]; then
+              echo "Version changed ($MAIN_VERSION → $PR_VERSION) but no release label"
+              exit 1
+            fi
+            echo "No version change"
+            exit 0
+          fi
+          LABEL=$(echo "$PR_LABELS" | grep -E '^release-(major|minor|patch)$')
+          BUMP_TYPE=${LABEL#release-}
+          echo "Bump type: $BUMP_TYPE"
+          if [ -z "$LATEST_TAG" ]; then
+            echo "First release"
+            exit 0
+          fi
+          LATEST="${LATEST_TAG#v}"
+          IFS='.' read -ra LT <<< "$LATEST"
+          IFS='.' read -ra PV <<< "$PR_VERSION"
+          case "$BUMP_TYPE" in
+            major) EXPECTED="$((LT[0] + 1)).0.0" ;;
+            minor) EXPECTED="${LT[0]}.$((LT[1] + 1)).0" ;;
+            patch) EXPECTED="${LT[0]}.${LT[1]}.$((LT[2] + 1))" ;;
+          esac
+          if [ "$PR_VERSION" != "$EXPECTED" ]; then
+            echo "Mismatch: expected $EXPECTED for $LABEL, got $PR_VERSION"
+            exit 1
+          fi
+          echo "Verified: $LATEST → $PR_VERSION ($BUMP_TYPE)"
+
+  tag-and-release:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists"
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --target main --latest
+          fi
