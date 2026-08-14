@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build devcontainer and run tests
-        uses: devcontainers/action@v1
+        uses: devcontainers/ci@v0.3
         with:
           runCmd: |
             npm ci
