@@ -14,11 +14,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Validate version bump
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+
         run: |
           set -euo pipefail
 
