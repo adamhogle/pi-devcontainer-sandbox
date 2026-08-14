@@ -10,28 +10,14 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
-    # Run inside the same dev container image used for local development
-    container:
-      image: mcr.microsoft.com/devcontainers/typescript-node:22
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm test
-
-      - name: Generate coverage report
-        run: npm run test:coverage
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
+      - name: Build and run inside dev container
+        uses: devcontainers/action@v1
         with:
-          name: coverage
-          path: coverage/
-          retention-days: 7
+          runCmd: |
+            npm ci
+            npm run lint
+            npm test
