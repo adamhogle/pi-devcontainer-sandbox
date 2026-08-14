@@ -2,12 +2,13 @@ name: Release
 
 on:
   pull_request:
-    types: [opened, synchronize, labeled, unlabeled]
+    types: [opened, synchronize, labeled, unlabeled, closed]
     branches: [main]
 
 jobs:
   # ── PR validation: verify version bump matches label ─────────────────────
   pr-check:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
