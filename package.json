@@ -1,7 +1,14 @@
 {
   "name": "pi-devcontainer-sandbox",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Routes pi tools into Podman dev containers",
   "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "type": "extension",
+    "name": "dev-container-sandbox",
+    "entry": "extensions/dev-container-sandbox/index.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -10,6 +17,15 @@
     "lint:fix": "eslint --fix",
     "check": "npm run lint && npm test",
     "deploy": "npm run check && cp extensions/dev-container-sandbox/*.ts \"$HOME/.pi/agent/extensions/dev-container-sandbox/\""
+  },
+  "files": [
+    "extensions/dev-container-sandbox/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",

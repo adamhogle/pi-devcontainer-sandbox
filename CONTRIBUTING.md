@@ -37,7 +37,9 @@ pi-devcontainer-sandbox/
 │   │   ├── grep.test.ts
 │   │   └── inspect.test.ts
 │   └── index.test.ts
+├── .github/workflows/release.yml       # Release (version check + tag on merge)
 ├── package.json
+├── CHANGELOG.md                        # Release history
 ├── CONTRIBUTING.md                     # This file
 ├── REQUIREMENTS.md                     # Full behavior specification
 └── README.md
@@ -184,20 +186,83 @@ return createReadTool(localCwd, { operations: createPodmanReadOps(name) })
 - **Keep the known bugs table up  to date.** When you fix a bug, move its row  to the commit message reference.
 - **Document new behavior** in `REQUIREMENTS.md` if it changes the extension's external contract.
 
+## Release Workflow
+
+Every PR that merges to `main` produces a new release. The version is determined by a GitHub label on the PR.
+
+### Labels
+
+| Label | Effect | Example |
+|-------|--------|--------|
+| `release-patch` | Patch bump (0.1.0 → 0.1.1) | Bug fixes, minor changes |
+| `release-minor` | Minor bump (0.1.0 → 0.2.0) | New features, breaking 0.x changes |
+| `release-major` | Major bump (1.0.0 → 2.0.0) | Breaking changes after 1.0 |
+| _(none)_ | No version change | Docs-only, refactors, CI changes |
+
+Apply exactly one release label per PR. CI will fail if multiple are detected.
+
+### Developer workflow
+
+```bash
+# 1. Create branch, make changes, write tests
+
+# 2. Bump the version
+#    Run the appropriate command for your label:
+#    npm version patch --no-git-tag-version   # for release-patch
+#    npm version minor --no-git-tag-version   # for release-minor
+#    npm version major --no-git-tag-version   # for release-major
+
+# 3. Commit the version bump (can be combined with feature commit)
+git add package.json
+git commit -m "feat: my feature"
+
+# 4. Open PR, add the matching release label
+#    CI validates the version bump matches the label
+
+# 5. Rebase onto main, then ff-merge
+#    Post-merge, CI creates a git tag and GitHub Release automatically
+```
+
+### How it works
+
+1. **PR check** — CI reads the PR label and validates that `package.json` version is bumped by the correct amount from the latest tag on `main`.
+2. **Post-merge** — CI creates a git tag (`v0.1.1`) and a GitHub Release with auto-generated release notes.
+
+No release branches, no manual tagging, no npm publish needed. Every merge is a release.
+
+### Why every merge?
+
+This project uses git-based install (`pi install github:adamhogle/pi-devcontainer-sandbox`). Users pin to a specific tag (`#v0.1.0`) for stability or run `pi update` to get the latest. Frequent releases with clear semver signals are better than infrequent batched releases for this model.
+
+To batch multiple changes into one release, open a single PR containing all the changes with one version bump.
+
 ## Deployment
 
-The deployed copy lives at `~/.pi/agent/extensions/dev-container-sandbox/`.
+### For end users
 
-Deploy by copying source files only after all tests pass:
+```bash
+# Install
+pi install github:adamhogle/pi-devcontainer-sandbox
+
+# Update to latest
+pi update dev-container-sandbox
+# Or:
+pi update --all
+```
+
+### For development testing
+
+The deployed copy lives at `~/.pi/agent/extensions/dev-container-sandbox/`. To test local changes without committing:
 
 ```bash
 npm test && cp extensions/dev-container-sandbox/*.ts ~/.pi/agent/extensions/dev-container-sandbox/
 ```
 
-For pi package users, deployment happens through the normal pi package update mechanism:
+### Publishing a release
 
-```bash
-pi update npm:@scope/dev-container-sandbox
-# or
-pi update --all
-```
+Releases are automatic via CI. When your PR with a `release-*` label merges to `main`:
+
+1. CI creates a git tag (`v0.1.0`, `v0.2.0`, etc.)
+2. CI creates a GitHub Release with auto-generated notes
+3. Users running `pi update dev-container-sandbox` get the latest code from `main`
+4. Users who pinned to a tag continue on that version until they explicitly change their pin
