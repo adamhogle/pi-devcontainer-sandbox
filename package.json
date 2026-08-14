@@ -1,9 +1,11 @@
 {
   "name": "pi-devcontainer-sandbox",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Routes pi tools into Podman dev containers",
   "type": "module",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "pi": {
     "type": "extension",
     "name": "dev-container-sandbox",

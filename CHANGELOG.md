@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1] - 2025-06-09
+
+### Fixed
+
+- Release workflow `tag-and-release` job failing on merge to main
+  - Removed redundant `github.ref` condition (already scoped by `on:` trigger)
+  - Moved label extraction inline to avoid evaluation issues on push events
+
 ## [0.1.0] - 2025-06-09
 
 ### Added
