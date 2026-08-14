@@ -21,7 +21,6 @@ jobs:
       - name: Validate version bump
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
         run: |
           set -euo pipefail
 
@@ -34,13 +33,15 @@ jobs:
           echo "PR version: $PR_VERSION"
 
           # Get PR labels from event payload (not gh CLI — GITHUB_TOKEN
-          # on pull_request events can't query GraphQL for PR metadata)
-          PR_LABELS=$(echo "$PR_LABELS_JSON" | python3 -c "
+          # on pull_request events can't query GraphQL for PR metadata).
+          # Inline python to extract label names from the event JSON.
+          echo '${{ toJSON(github.event.pull_request.labels) }}' | python3 -c "
 import json, sys
 labels = json.load(sys.stdin)
 for label in labels:
     print(label['name'])
-")
+" > /tmp/pr-labels.txt
+          PR_LABELS=$(cat /tmp/pr-labels.txt)
           echo "Labels:"
           echo "$PR_LABELS"
 
@@ -100,12 +101,18 @@ for label in labels:
 
   # ── Post-merge: create git tag + GitHub release ──────────────────────────
   tag-and-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Debug event info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
 
       - name: Read version from package.json
         id: version
@@ -113,12 +120,14 @@ for label in labels:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Read version: $VERSION"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
+          echo "Creating release for tag: $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists — skipping"
           else
