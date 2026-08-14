@@ -24,32 +24,43 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Get the latest version tag on main
+          # Fetch main so we can compare versions
+          git fetch origin main 2>/dev/null || true
+
+          # Get the latest version tag
           LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
-          echo "Latest tag on main: ${LATEST_TAG:-none}"
+          echo "Latest tag: ${LATEST_TAG:-none}"
 
           # Get PR's package.json version
           PR_VERSION=$(node -p "require('./package.json').version")
           echo "PR version: $PR_VERSION"
 
-          # Get PR labels from event payload (not gh CLI — GITHUB_TOKEN
-          # on pull_request events can't query GraphQL for PR metadata).
-          # Inline python to extract label names from the event JSON.
+          # Get PR labels from event payload. For synchronize events,
+          # labels may not be in the payload, so default to empty array.
           LABELS_JSON='${{ toJSON(github.event.pull_request.labels) }}'
-          PR_LABELS=$(echo "$LABELS_JSON" | python3 -c "import json,sys; [print(l['name']) for l in json.load(sys.stdin)]")
-          echo "Labels:"
-          echo "$PR_LABELS"
+          if [ -z "$LABELS_JSON" ] || [ "$LABELS_JSON" = "null" ]; then
+            LABELS_JSON='[]'
+          fi
+          PR_LABELS=$(echo "$LABELS_JSON" | python3 -c "import json,sys; [print(l['name']) for l in json.load(sys.stdin)]" 2>/dev/null || echo "")
+          echo "Labels: '${PR_LABELS:-}'"
 
           # Count release labels
           RELEASE_LABELS=$(echo "$PR_LABELS" | grep -c -E '^release-(major|minor|patch)$' || true)
           if [ "$RELEASE_LABELS" -gt 1 ]; then
-            echo "Multiple release labels found — use exactly one of: release-major, release-minor, release-patch"
+            echo "Multiple release labels — use exactly one of: release-major, release-minor, release-patch"
             exit 1
           fi
 
           # No release label — version must be unchanged from main
           if [ "$RELEASE_LABELS" -eq 0 ]; then
-            MAIN_VERSION=$(git show origin/main:package.json 2>/dev/null | node -p "require('fs').readFileSync('/dev/stdin','utf8') ? JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version : '0.0.0'")
+            MAIN_VERSION=$(git show origin/main:package.json 2>/dev/null | node -p "
+const fs = require('fs');
+try {
+  const input = fs.readFileSync('/dev/stdin', 'utf8').trim();
+  if (!input) { process.stdout.write('0.0.0'); }
+  else { const p = JSON.parse(input); process.stdout.write(p.version || '0.0.0'); }
+} catch(e) { process.stdout.write('0.0.0'); }
+")
             if [ "$PR_VERSION" != "$MAIN_VERSION" ]; then
               echo "Version changed ($MAIN_VERSION → $PR_VERSION) but no release label found"
               echo "   Add one of: release-major, release-minor, release-patch"
