@@ -4,13 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, labeled, unlabeled]
     branches: [main]
-  push:
-    branches: [main]
 
 jobs:
   # ── PR validation: verify version bump matches label ─────────────────────
   pr-check:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,11 +103,12 @@ try {
 
   # ── Post-merge: create git tag + GitHub release ──────────────────────────
   tag-and-release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Read version from package.json
@@ -133,7 +131,7 @@ try {
             gh release create "$TAG" \
               --title "$TAG" \
               --generate-notes \
-              --target "${{ github.sha }}" \
+              --target main \
               --latest
             echo "Created release $TAG"
           fi
