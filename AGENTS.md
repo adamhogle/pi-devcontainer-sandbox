@@ -10,7 +10,13 @@ This file is loaded by pi as a context file. For contributing guidelines, see [C
 - **Code coverage**: `npm run test:coverage` — HTML report at `coverage/index.html`
 - **Coding conventions**: Path translation inside operation factories, never in `index.ts`
 - **Known bugs**: See [CONTRIBUTING.md#known-bugs--regression-tests](CONTRIBUTING.md#known-bugs--regression-tests)
-- **Deploy**: `npm test && cp extensions/dev-container-sandbox/*.ts ~/.pi/agent/extensions/dev-container-sandbox/`
+- **Release workflow**: Every PR that merges to `main` is a release. See [CONTRIBUTING.md#release-workflow](CONTRIBUTING.md#release-workflow)
+- **Release labels**: `release-patch`, `release-minor`, `release-major` — apply exactly one per PR, or none for docs/CI-only
+- **Version bump**: `npm version patch --no-git-tag-version` (or minor/major) before pushing the PR
+- **CI validation**: CI verifies the version in `package.json` matches the label. Run `npm test` locally first.
+- **Merge method**: Rebase + fast-forward merge only
+- **Deploy (dev)**: `npm test && cp extensions/dev-container-sandbox/*.ts ~/.pi/agent/extensions/dev-container-sandbox/`
+- **Deploy (release)**: Automatic — merging a labeled PR creates the tag and GitHub Release
 
 ## Key Principles
 
@@ -23,3 +29,4 @@ This file is loaded by pi as a context file. For contributing guidelines, see [C
 
 - **Never modify `.github/workflows/` files without asking me first.** Show me the proposed changes and wait for my approval before committing or pushing any workflow changes.
 - This applies to any CI/CD configuration, action updates, or workflow additions.
+- See `.github/workflows/release.yml` for the new release workflow being introduced in this PR.

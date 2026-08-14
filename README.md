@@ -2,18 +2,19 @@
 
 [![CI](https://github.com/adamhogle/pi-devcontainer-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/adamhogle/pi-devcontainer-sandbox/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Release](https://img.shields.io/github/v/release/adamhogle/pi-devcontainer-sandbox)](https://github.com/adamhogle/pi-devcontainer-sandbox/releases)
 
-Routes [pi](https://github.com/earendil-works/pi-coding-agent)'s built-in tools (read, write, edit, bash, grep, find, ls) in to a running [Podman](https://podman.io/) dev container.
+Routes [pi](https://github.com/earendil-works/pi-coding-agent)'s built-in tools (read, write, edit, bash, grep, find, ls) into a running [Podman](https://podman.io/) dev container.
 
 ## The Problem
 
-When working inside a dev container, tools like `ls`, `find`, `read`, and `bash` need  to operate on files **inside** the container, not on the host filesystem. Without this extension, pi's tools only see host paths, which means:
+When working inside a dev container, tools like `ls`, `find`, `read`, and `bash` need to operate on files **inside** the container, not on the host filesystem. Without this extension, pi's tools only see host paths, which means:
 
 - `ls /workspaces/project` fails because the LLM's cwd is inside the container
 - `find src/**/*.ts` returns host results, not container results
 - `read` and `write` target host files, not container project files
 
-This extension intercepts all seven tools and transparently routes them in to a Podman-managed dev container, translating host paths (`C:\Users\...` or `/home/...`)  to container paths (`/workspaces/...`) so the LLM sees a seamless environment.
+This extension intercepts all seven tools and transparently routes them into a Podman-managed dev container, translating host paths (`C:\Users\...` or `/home/...`) to container paths (`/workspaces/...`) so the LLM sees a seamless environment.
 
 ## Features
 
@@ -21,10 +22,10 @@ This extension intercepts all seven tools and transparently routes them in to a 
 - **Auto-start** — Builds and starts containers using `@devcontainers/cli` if none is running
 - **Tool routing** — All 7 built-in tools (read, write, edit, bash, grep, find, ls) run inside the container
 - **`!` command routing** — `!command` and `!!command` execute inside the container when active
-- **CWD translation** — Working directory is transparently translated from host  to container paths
-- **System prompt** — Updates the `Current working directory` line  to show the container workspace path
-- **Manual override** — `pi --dev-container <name>`  to skip auto-detection
-- **Rebuild** — `/dev-container rebuild`  to rebuild from devcontainer config
+- **CWD translation** — Working directory is transparently translated from host → container paths
+- **System prompt** — Updates the `Current working directory` line to show the container workspace path
+- **Manual override** — `pi --dev-container <name>` to skip auto-detection
+- **Rebuild** — `/dev-container rebuild` to rebuild from devcontainer config
 - **Status** — `/dev-container` shows current container ID and workspace
 - **Host fallback** — No container = all tools run normally on host
 
@@ -37,9 +38,23 @@ This extension intercepts all seven tools and transparently routes them in to a 
 
 ## Install
 
+### Via pi package (recommended)
+
+```bash
+pi install github:adamhogle/pi-devcontainer-sandbox
+```
+
+To pin a specific version:
+
+```bash
+pi install github:adamhogle/pi-devcontainer-sandbox#v0.1.0
+```
+
+Then start pi from a project that has a `.devcontainer/devcontainer.json`. The extension auto-detects the container on session start.
+
 ### Manual / Development install
 
-Clone the repo and copy the source files  to pi's extension directory:
+Clone the repo and copy the source files to pi's extension directory:
 
 ```bash
 git clone https://github.com/adamhogle/pi-devcontainer-sandbox.git
@@ -54,8 +69,6 @@ cp extensions/dev-container-sandbox/*.ts ~/.pi/agent/extensions/dev-container-sa
 ```bash
 pi -e extensions/dev-container-sandbox/index.ts
 ```
-
-Then start pi from a project that has a `.devcontainer/devcontainer.json`. The extension auto-detects the container on session start.
 
 ## Usage
 
@@ -74,7 +87,7 @@ The extension automatically detects or starts the container. Verify with:
 Expected output:
 
 ```
- Active container: <id> -> /workspaces/your-project
+🐳 Active container: <id> → /workspaces/your-project
 ```
 
 Commands available:
@@ -90,14 +103,14 @@ Commands available:
 pi --dev-container <container-name-or-id>
 ```
 
-Skips auto-detection and attaches  to the specified container directly.
+Skips auto-detection and attaches to the specified container directly.
 
 ## How It Works
 
 1. **Session start** — Extension checks for `.devcontainer/devcontainer.json`, then scans running podman containers for one that mounts the project directory
-2. **Auto-start** — If no running container is found, runs `npx @devcontainers/cli up --docker-path podman`  to build and start
+2. **Auto-start** — If no running container is found, runs `npx @devcontainers/cli up --docker-path podman` to build and start
 3. **Tool interception** — Each built-in tool (read, write, edit, bash, grep, find, ls) is replaced with a wrapper that executes the equivalent operation inside the container via `podman exec`
-4. **Path translation** — Host paths are transparently converted  to container paths (e.g., `/home/user/project`  to `/workspaces/project`)
+4. **Path translation** — Host paths are transparently converted to container paths (e.g., `/home/user/project` → `/workspaces/project`)
 
 ## Edge Cases
 
@@ -105,9 +118,9 @@ Skips auto-detection and attaches  to the specified container directly.
 |----------|----------|
 | No `.devcontainer/` | Extension is a no-op — all tools run on host |
 | Container not running | Auto-starts via `@devcontainers/cli` |
-| Invalid `--dev-container` | Error reported, falls back  to host mode |
+| Invalid `--dev-container` | Error reported, falls back to host mode |
 | Container stops mid-session | Next tool call fails with podman error |
-| Windows + WSL | Paths are converted from `C:\...`  to `/mnt/c/...` for matching |
+| Windows + WSL | Paths are converted from `C:\...` to `/mnt/c/...` for matching |
 
 ## Development
 
@@ -125,14 +138,16 @@ npm run test:coverage  # Code coverage report
 ## Project Structure
 
 ```
-pi-devcontainer-sandbox/
+pi-sandbox/
 ├── .github/workflows/ci.yml     # CI (build + test on push/PR)
+├── .github/workflows/release.yml # Release (version check + tag on merge)
 ├── extensions/dev-container-sandbox/
 │   ├── index.ts                  # Extension entry point
 │   └── operations.ts             # Podman operation backends
 ├── tests/
 │   ├── helpers/                  # Mock podman / mock pi API
 │   └── operations/               # Unit tests
+├── CHANGELOG.md                  # Release history
 ├── CONTRIBUTING.md               # Development guide
 ├── REQUIREMENTS.md               # Full behavior specification
 └── README.md                     # This file
