@@ -1,10 +1,83 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  # ── Version bump validation (PR only) ────────────────────────────────
+  validate-version:
+    name: Validate version bump
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - run: git fetch origin --tags
+
+      - name: Validate package.json version against PR label
+        run: |
+          LABELS=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels \
+            --jq '[.[].name] | join(" ")')
+          echo "PR labels: $LABELS"
+
+          PATCH=$(echo "$LABELS" | grep -o 'release-patch' | wc -l)
+          MINOR=$(echo "$LABELS" | grep -o 'release-minor' | wc -l)
+          MAJOR=$(echo "$LABELS" | grep -o 'release-major' | wc -l)
+          TOTAL=$((PATCH + MINOR + MAJOR))
+
+          if [ "$TOTAL" -gt 1 ]; then
+            echo "❌ Multiple release labels ($TOTAL). Apply exactly one."
+            exit 1
+          fi
+
+          CURRENT=$(node -p "require('./package.json').version")
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST="${LATEST_TAG#v}"
+
+          node -e "
+          const c = '$CURRENT'.split('.').map(Number);
+          const l = '$LATEST'.split('.').map(Number);
+          const label = '$LABELS';
+          const isPatch = label.includes('release-patch');
+          const isMinor = label.includes('release-minor');
+          const isMajor = label.includes('release-major');
+
+          if (!isPatch && !isMinor && !isMajor) {
+            if ('$CURRENT' !== '$LATEST') {
+              console.error('❌ No release label but version $CURRENT ≠ $LATEST');
+              process.exit(1);
+            }
+            console.log('✅ Version unchanged');
+            process.exit(0);
+          }
+
+          if (isMajor && c[0] !== l[0] + 1) {
+            console.error('❌ release-major but $CURRENT is not major from $LATEST');
+            process.exit(1);
+          }
+          if (isMinor && (c[0] !== l[0] || c[1] !== l[1] + 1)) {
+            console.error('❌ release-minor but $CURRENT is not minor from $LATEST');
+            process.exit(1);
+          }
+          if (isPatch && (c[0] !== l[0] || c[1] !== l[1] || c[2] !== l[2] + 1)) {
+            console.error('❌ release-patch but $CURRENT is not patch from $LATEST');
+            process.exit(1);
+          }
+          console.log('✅ Valid bump: $LATEST → $CURRENT');
+          "
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # ── Build & test ────────────────────────────────────────────────────
   devcontainer-ci:
     name: Build & Test
     runs-on: ubuntu-latest
