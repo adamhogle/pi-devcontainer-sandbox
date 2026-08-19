@@ -10,7 +10,7 @@
  *   - /dev-container command
  */
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // ── Mock node:fs to control existsSync ───────────────────────────────────────
 // Note: vi.mock factory runs at hoist time. Use vi.hoisted for the mock fn.
@@ -496,6 +496,14 @@ describe("extension entry point (index.ts)", () => {
         if (p === process.cwd() + "/.devcontainer/devcontainer.json") return true;
         return false;
       });
+    });
+
+    afterEach(() => {
+      // Restore any SANDBOX_FORWARD_ENV or test keys that might have leaked
+      const testKeys = ["SANDBOX_FORWARD_ENV", "MY_API_KEY"];
+      for (const key of testKeys) {
+        Reflect.deleteProperty(process.env, key);
+      }
     });
 
     it("forwards env vars configured in SANDBOX_FORWARD_ENV to bash tool", async () => {

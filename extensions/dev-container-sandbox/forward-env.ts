@@ -66,7 +66,10 @@ function readForwardEnvFromSettings(settingsPath: string, names: Set<string>): v
     const sandboxConfig = settings["dev-container-sandbox"] as Record<string, unknown> | undefined;
     if (sandboxConfig?.forwardEnv != null && Array.isArray(sandboxConfig.forwardEnv)) {
       for (const name of sandboxConfig.forwardEnv) {
-        if (typeof name === "string") names.add(name);
+        if (typeof name === "string") {
+          const trimmed = name.trim();
+          if (trimmed !== "") names.add(trimmed);
+        }
       }
     }
   } catch {

@@ -85,6 +85,15 @@ picked up from whatever envchain provides.
 
 #### Scope
 
+#### Security consideration
+
+Env vars are passed to `podman exec` as `--env KEY=VALUE` command-line arguments.
+On most systems, these arguments are visible to other users via `ps aux` or
+`/proc/*/cmdline` while the process is running. Avoid using env forwarding on
+shared machines or in CI environments where process listings are accessible to
+untrusted parties. For local development machines, this is generally not a concern
+since only your user can see your own processes.
+
 | Operation | Receives env vars? | Reason |
 |-----------|-------------------|--------|
 | `tool(bash)` | ✅ | Agent shell commands need API keys |
