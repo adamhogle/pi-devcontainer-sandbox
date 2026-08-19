@@ -17,10 +17,22 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const mockedFs = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
+  mockReadFileSync: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({
   existsSync: mockedFs.mockExistsSync,
+  readFileSync: mockedFs.mockReadFileSync,
+}));
+
+// ── Mock node:os for homedir used by getForwardedEnv ─────────────────────────
+
+const mockedOs = vi.hoisted(() => ({
+  mockHomedir: vi.fn(),
+}));
+
+vi.mock("node:os", () => ({
+  homedir: mockedOs.mockHomedir,
 }));
 
 // ── Mock node:child_process for podman spawn calls ───────────────────────────
@@ -70,6 +82,8 @@ const mockSpawn = vi.hoisted(() => {
       if (n >= calls.length) throw new Error(`Call #${n} not found (${calls.length} total)`);
       return calls[n];
     },
+    callCount: () => calls.length,
+    calls: () => [...calls],
     reset: () => { calls.length = 0; responders = []; spawnFn.mockClear(); },
   };
 });
@@ -86,6 +100,9 @@ describe("extension entry point (index.ts)", () => {
     mockSpawn.reset();
     mockedFs.mockExistsSync.mockReset();
     mockedFs.mockExistsSync.mockReturnValue(true); // default: devcontainer.json exists
+    mockedFs.mockReadFileSync.mockReset();
+    mockedOs.mockHomedir.mockReset();
+    mockedOs.mockHomedir.mockReturnValue("/home/user");
   });
 
   describe("factory registration", () => {
@@ -469,6 +486,94 @@ describe("extension entry point (index.ts)", () => {
       await scope.triggerCommand("dev-container", "rebuild");
 
       expect(scope.notifications.some((n) => n.message.includes("Rebuilding"))).toBe(true);
+    });
+  });
+
+
+  describe("env forwarding from settings", () => {
+    beforeEach(() => {
+      mockedFs.mockExistsSync.mockImplementation((p: string) => {
+        if (p === process.cwd() + "/.devcontainer/devcontainer.json") return true;
+        return false;
+      });
+    });
+
+    it("forwards env vars configured in SANDBOX_FORWARD_ENV to bash tool", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      const origSandbox = process.env.SANDBOX_FORWARD_ENV;
+      const origMyKey = process.env.MY_API_KEY;
+      process.env.SANDBOX_FORWARD_ENV = "MY_API_KEY";
+      process.env.MY_API_KEY = "sk-test-123";
+
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps",
+        { stdout: "cont456\n" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      const bashHandler = scope.getHandler("user_bash")!;
+      const opsResult = bashHandler({ cwd: process.cwd() });
+
+      expect(opsResult).toBeDefined();
+      mockSpawn.respondWhen(() => true, { stdout: "done\n" });
+      await opsResult!.operations.exec("echo ok", process.cwd(), { onData: () => {} });
+
+      const bashCalls = mockSpawn.calls();
+      const execCall = bashCalls.find(c => c.args[0] === "exec" && c.args[1] === "-i");
+      expect(execCall).toBeDefined();
+      const envIndex = execCall!.args.indexOf("--env");
+      expect(envIndex).toBeGreaterThanOrEqual(0);
+      expect(execCall!.args[envIndex + 1]).toBe("MY_API_KEY=sk-test-123");
+
+      if (origSandbox === undefined) delete process.env.SANDBOX_FORWARD_ENV;
+      else process.env.SANDBOX_FORWARD_ENV = origSandbox;
+      if (origMyKey === undefined) delete process.env.MY_API_KEY;
+      else process.env.MY_API_KEY = origMyKey;
+    });
+
+    it("does not forward env vars when no config present", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps",
+        { stdout: "cont789\n" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      const bashHandler = scope.getHandler("user_bash")!;
+      const opsResult = bashHandler({ cwd: process.cwd() });
+
+      expect(opsResult).toBeDefined();
+      mockSpawn.respondWhen(() => true, { stdout: "done\n" });
+      await opsResult!.operations.exec("echo ok", process.cwd(), { onData: () => {} });
+
+      const bashCalls = mockSpawn.calls();
+      const execCall = bashCalls.find(c => c.args[0] === "exec" && c.args[1] === "-i");
+      expect(execCall).toBeDefined();
+      expect(execCall!.args).not.toContain("--env");
     });
   });
 });

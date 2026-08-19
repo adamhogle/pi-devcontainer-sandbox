@@ -49,6 +49,7 @@ import {
 } from "./operations";
 
 import type { PathMapper } from "./operations";
+import { getForwardedEnv } from "./forward-env";
 
 // ─── Docker shim for podman on Windows ──────────────────────────────────────
 
@@ -231,6 +232,9 @@ export default function (pi: ExtensionAPI): void {
 	const localFind = createFindTool(localCwd);
 	const localLs = createLsTool(localCwd);
 
+	// Forwarded env vars to pass into container (from pi settings)
+	let forwardedEnv: Record<string, string> = {};
+
 	let resolvedContainer: ContainerInfo | null = null;
 
 	const getContainerOps = (): ContainerInfo | null => {
@@ -246,6 +250,9 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		const containerFlag = pi.getFlag("dev-container") as string | undefined;
+
+		// Read env var forwarding configuration from pi settings
+		forwardedEnv = getForwardedEnv(localCwd);
 
 		try {
 			if (containerFlag != null) {
@@ -350,7 +357,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localBash.execute(id, params, signal, onUpdate);
-			return createBashTool(localCwd, { operations: createPodmanBashOps(ops.containerName, ops.pathMapper) })
+			return createBashTool(localCwd, { operations: createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -398,7 +405,7 @@ export default function (pi: ExtensionAPI): void {
 		const ops = getContainerOps();
 		if (!ops) return;
 		// The ops factory translates host→container internally. Pass event.cwd as-is.
-		const inner = createPodmanBashOps(ops.containerName, ops.pathMapper);
+		const inner = createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv);
 		return {
 			operations: {
 				exec(cmd: string, _cwd: string, opts: Parameters<BashOperations["exec"]>[2]) {

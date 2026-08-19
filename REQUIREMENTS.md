@@ -10,6 +10,7 @@ A pi extension that routes all built-in tools (read, write, edit, bash, grep, fi
 |------|---------|
 | `~/.pi/agent/extensions/dev-container-sandbox/index.ts` | Extension entry point: detection, tool overrides, status command |
 | `~/.pi/agent/extensions/dev-container-sandbox/operations.ts` | Podman operation backends (read, write, edit, bash, ls, find, grep) |
+| `~/.pi/agent/extensions/dev-container-sandbox/forward-env.ts` | Reads env forwarding config from pi settings and resolves values from `process.env` |
 
 ## Behavior
 
@@ -41,10 +42,59 @@ All 7 built-in tools are overridden:
 | `read` | `podman exec <container> cat <path>` |
 | `write` | Base64-encode content, `podman exec sh -c "echo <b64> \| base64 -d > <path>"` |
 | `edit` | Composed from read + write |
-| `bash` | `podman exec -i <container> bash -lc "<command>"` with streaming, timeout, abort |
+| `bash` | `podman exec -i <container> bash -lc "<command>"` with streaming, timeout, abort. Supports `--env KEY=VALUE` for configured forwarded env vars |
 | `grep` | `podman exec <container> grep -rn` with context, limit, glob support |
 | `find` | `podman exec <container> find ...` |
 | `ls` | `podman exec <container> stat` for single files, `ls -1a` for directories |
+
+### Environment variable forwarding
+When running commands inside the dev container, environment variables from the host
+(API keys, tokens, etc.) are not automatically available. Use env forwarding to pass
+specific variables through `podman exec --env`.
+
+#### Configuration
+
+Env forwarding only applies to **bash operations** (`tool(bash)` and `!` commands).
+File tools (read, write, edit, ls, find, grep) do not receive forwarded env vars.
+
+**1. Pi settings (recommended, set once)**
+
+Add a `dev-container-sandbox.forwardEnv` array to your global `~/.pi/agent/settings.json`:
+
+```json
+{
+  "dev-container-sandbox": {
+    "forwardEnv": ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+  }
+}
+```
+
+You can also add project-specific overrides in `.pi/settings.json`; they merge with
+the global config.
+
+**2. Environment variable (ad-hoc)**
+
+```bash
+SANDBOX_FORWARD_ENV=OPENAI_API_KEY,ANTHROPIC_API_KEY pi
+```
+
+If both sources specify the same name, it is deduplicated. Only variables that are
+actually set in `process.env` at startup are forwarded. This works naturally with
+`envchain my-secret pi` — configure the names in settings once, and values are
+picked up from whatever envchain provides.
+
+#### Scope
+
+| Operation | Receives env vars? | Reason |
+|-----------|-------------------|--------|
+| `tool(bash)` | ✅ | Agent shell commands need API keys |
+| `!` / `!!` commands | ✅ | User shell commands need API keys |
+| `tool(read)` | ❌ | File reads don't need env vars |
+| `tool(write)` | ❌ | File writes don't need env vars |
+| `tool(edit)` | ❌ | Composed of read + write |
+| `tool(find)` | ❌ | File search doesn't need env vars |
+| `tool(ls)` | ❌ | File listing doesn't need env vars |
+| `tool(grep)` | ❌ | Text search doesn't need env vars |
 
 ### User `!` commands
 
