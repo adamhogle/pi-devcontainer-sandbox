@@ -73,17 +73,31 @@ export function createPathMapper(hostCwd: string, mounts: MountInfo[]): PathMapp
 			if (!hostPath) return "/";
 			const normalized = normalizePath(hostPath);
 
-			if (bestMount) {
-				const normSource = normalizePath(bestMount.source);
-				const normDest = normalizePath(bestMount.destination);
+			// Check ALL mounts for the best source match.
+			// Previously checked only bestMount (the mount matching hostCwd),
+			// which meant paths under other mounts (e.g. ~/.pi via a separate
+			// bind mount) fell through untranslated — a bug on Linux where
+			// host and container paths share the "/home/..." format.
+			const inputVariants = pathVariants(normalized);
+			let bestMatch: { source: string; dest: string; variant: string } | null = null;
+			let bestPrefixLen = 0;
 
-				// Try matching both the original path and WSL variant
-				for (const variant of pathVariants(normalized)) {
-					if (variant.startsWith(normSource)) {
-						const relative = variant.slice(normSource.length);
-						return relative ? `${normDest}${relative}` : normDest;
+			for (const mount of mounts) {
+				const normSource = normalizePath(mount.source);
+				for (const variant of inputVariants) {
+					if (variant.startsWith(normSource) && normSource.length > bestPrefixLen) {
+						bestPrefixLen = normSource.length;
+						bestMatch = { source: normSource, dest: normalizePath(mount.destination), variant };
 					}
 				}
+			}
+
+			if (bestMatch) {
+				// Use the matched variant (original or WSL) to compute the relative offset,
+				// not the original normalized path — they may have different lengths when
+				// the match occurred through the WSL variant (e.g. "/mnt/c/..." vs "C:/...")
+				const relative = bestMatch.variant.slice(bestMatch.source.length);
+				return relative ? `${bestMatch.dest}${relative}` : bestMatch.dest;
 			}
 
 			// Fallback: no matching mount, use path as-is
