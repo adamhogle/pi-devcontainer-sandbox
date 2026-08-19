@@ -188,8 +188,8 @@ describe("createPodmanBashOps", () => {
       const envArgs = call.args.slice(execIndex + 1, containerIndex);
       expect(envArgs).toContain("--env");
       const envVals = envArgs.filter((a) => a !== "--env");
-      expect(envVals).toContain("API_KEY=sk-123");
-      expect(envVals).toContain("TOKEN=abc");
+      expect(envVals).toContain("API_KEY");
+      expect(envVals).toContain("TOKEN");
     });
 
     it("does not include --env when envVars is empty", async () => {
@@ -228,7 +228,7 @@ describe("createPodmanBashOps", () => {
       const envArgs = call.args.slice(execIndex + 1, containerIndex);
       const envVals = envArgs.filter((a) => a !== "--env" && a !== "-i");
       expect(envVals).toEqual(
-        expect.arrayContaining(["ONE=1", "TWO=2", "THREE=3"]),
+        expect.arrayContaining(["ONE", "TWO", "THREE"]),
       );
       expect(envVals).toHaveLength(3);
     });
@@ -246,7 +246,7 @@ describe("createPodmanBashOps", () => {
         "exec",
         "-i",
         "--env",
-        "KEY=val",
+        "KEY",
         "test-container",
         "bash",
         "-lc",

@@ -87,12 +87,11 @@ picked up from whatever envchain provides.
 
 #### Security consideration
 
-Env vars are passed to `podman exec` as `--env KEY=VALUE` command-line arguments.
-On most systems, these arguments are visible to other users via `ps aux` or
-`/proc/*/cmdline` while the process is running. Avoid using env forwarding on
-shared machines or in CI environments where process listings are accessible to
-untrusted parties. For local development machines, this is generally not a concern
-since only your user can see your own processes.
+Env vars are forwarded via `podman exec --env KEY`, which tells podman to pass
+through the value from its own environment (inherited from pi). The value never
+appears on the command line, so it is not visible to other users via `ps aux`
+or `/proc/*/cmdline`. Only the env var names appear in the process listing,
+which are already known from the configuration.
 
 | Operation | Receives env vars? | Reason |
 |-----------|-------------------|--------|

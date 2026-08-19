@@ -238,8 +238,8 @@ export function createPodmanBashOps(container: string, pathMapper?: PathMapper, 
 
 				const envArgs: string[] = [];
 				if (envVars) {
-					for (const [key, value] of Object.entries(envVars)) {
-						envArgs.push("--env", `${key}=${value}`);
+					for (const key of Object.keys(envVars)) {
+						envArgs.push("--env", key);
 					}
 				}
 

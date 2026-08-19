@@ -543,7 +543,7 @@ describe("extension entry point (index.ts)", () => {
       expect(execCall).toBeDefined();
       const envIndex = execCall!.args.indexOf("--env");
       expect(envIndex).toBeGreaterThanOrEqual(0);
-      expect(execCall!.args[envIndex + 1]).toBe("MY_API_KEY=sk-test-123");
+      expect(execCall!.args[envIndex + 1]).toBe("MY_API_KEY");
 
       if (origSandbox === undefined) delete process.env.SANDBOX_FORWARD_ENV;
       else process.env.SANDBOX_FORWARD_ENV = origSandbox;
