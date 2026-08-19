@@ -84,8 +84,10 @@ export function createPathMapper(hostCwd: string, mounts: MountInfo[]): PathMapp
 
 			for (const mount of mounts) {
 				const normSource = normalizePath(mount.source);
+				const sourceWithSep = normSource.endsWith("/") ? normSource : normSource + "/";
 				for (const variant of inputVariants) {
-					if (variant.startsWith(normSource) && normSource.length > bestPrefixLen) {
+					const variantWithSep = variant.endsWith("/") ? variant : variant + "/";
+					if (variantWithSep.startsWith(sourceWithSep) && normSource.length > bestPrefixLen) {
 						bestPrefixLen = normSource.length;
 						bestMatch = { source: normSource, dest: normalizePath(mount.destination), variant };
 					}
