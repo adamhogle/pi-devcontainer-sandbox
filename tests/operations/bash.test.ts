@@ -168,3 +168,89 @@ describe("createPodmanBashOps", () => {
     ).rejects.toThrow("timeout");
   }, 5000);
 });
+
+
+  describe("env var forwarding", () => {
+    beforeEach(() => mock.reset());
+
+    it("includes --env args when envVars provided", async () => {
+      const ops = createPodmanBashOps("test-container", testMapper, {
+        API_KEY: "sk-123",
+        TOKEN: "abc",
+      });
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("echo ok", "C:/project", { onData: dummyOnData });
+
+      const call = mock.call(0);
+      const execIndex = call.args.indexOf("exec");
+      const containerIndex = call.args.indexOf("test-container");
+      const envArgs = call.args.slice(execIndex + 1, containerIndex);
+      expect(envArgs).toContain("--env");
+      const envVals = envArgs.filter((a) => a !== "--env");
+      expect(envVals).toContain("API_KEY");
+      expect(envVals).toContain("TOKEN");
+    });
+
+    it("does not include --env when envVars is empty", async () => {
+      const ops = createPodmanBashOps("test-container", testMapper, {});
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("echo ok", "C:/project", { onData: dummyOnData });
+
+      const call = mock.call(0);
+      expect(call.args).not.toContain("--env");
+    });
+
+    it("does not include --env when envVars is undefined", async () => {
+      const ops = createPodmanBashOps("test-container", testMapper);
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("echo ok", "C:/project", { onData: dummyOnData });
+
+      const call = mock.call(0);
+      expect(call.args).not.toContain("--env");
+    });
+
+    it("passes multiple env vars correctly", async () => {
+      const ops = createPodmanBashOps("test-container", undefined, {
+        ONE: "1",
+        TWO: "2",
+        THREE: "3",
+      });
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("echo ok", "/path", { onData: dummyOnData });
+
+      const call = mock.call(0);
+      const execIndex = call.args.indexOf("exec");
+      const containerIndex = call.args.indexOf("test-container");
+      const envArgs = call.args.slice(execIndex + 1, containerIndex);
+      const envVals = envArgs.filter((a) => a !== "--env" && a !== "-i");
+      expect(envVals).toEqual(
+        expect.arrayContaining(["ONE", "TWO", "THREE"]),
+      );
+      expect(envVals).toHaveLength(3);
+    });
+
+    it("env vars appear in correct position before container and command", async () => {
+      const ops = createPodmanBashOps("test-container", undefined, {
+        KEY: "val",
+      });
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("echo ok", "/path", { onData: dummyOnData });
+
+      const call = mock.call(0);
+      expect(call.args).toEqual([
+        "exec",
+        "-i",
+        "--env",
+        "KEY",
+        "test-container",
+        "bash",
+        "-lc",
+        expect.stringContaining("echo ok"),
+      ]);
+    });
+  });

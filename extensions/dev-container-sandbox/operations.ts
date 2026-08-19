@@ -227,7 +227,7 @@ export async function getContainerMounts(container: string): Promise<MountInfo[]
 
 // ─── Bash Operations ─────────────────────────────────────────────────────────
 
-export function createPodmanBashOps(container: string, pathMapper?: PathMapper): BashOperations {
+export function createPodmanBashOps(container: string, pathMapper?: PathMapper, envVars?: Record<string, string>): BashOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		exec(command, cwd, { onData, signal, timeout }): Promise<BashOutput> {
@@ -236,7 +236,14 @@ export function createPodmanBashOps(container: string, pathMapper?: PathMapper):
 				const containerCwd = toCont(cwd);
 				const fullCommand = `cd ${quote(containerCwd)} && ${command}`;
 
-				const child = spawn("podman", ["exec", "-i", container, "bash", "-lc", fullCommand], {
+				const envArgs: string[] = [];
+				if (envVars) {
+					for (const key of Object.keys(envVars)) {
+						envArgs.push("--env", key);
+					}
+				}
+
+				const child = spawn("podman", ["exec", "-i", ...envArgs, container, "bash", "-lc", fullCommand], {
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 
