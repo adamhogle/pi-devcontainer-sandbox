@@ -13,6 +13,10 @@
  *   2. Fast path: scan running podman containers for one with project mounted
  *   3. If not found, run devcontainer up to build/start
  *
+ *
+ * NOTE: Users should mount ~/.pi/ into their devcontainer for skills,
+ * settings, auth, and prompts to work. See REQUIREMENTS.md.
+
  * Manual override: --dev-container <name>
  * Rebuild: /dev-container rebuild
  */
@@ -29,7 +33,6 @@ import {
 	createLsTool,
 	createReadTool,
 	createWriteTool,
-	getAgentDir,
 	type BashOperations,
 } from "@earendil-works/pi-coding-agent";
 
@@ -218,22 +221,6 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	const localCwd = process.cwd();
-	const globalAgentDir = normalizePath(getAgentDir());
-
-	/**
-	 * Check whether a path lives inside pi's global agent directory
-	 * (~/.pi/agent/). These paths are on the host filesystem and are NOT
-	 * mounted into the container. Routing them through podman exec would
-	 * fail because the files don't exist inside the container.
-	 *
-	 * When a tool receives one of these paths, it should fall back to local
-	 * (host) execution instead of routing into the container.
-	 */
-	function isPiAgentPath(testPath: string): boolean {
-		if (!testPath || testPath === "/") return false;
-		const normalized = normalizePath(testPath);
-		return normalized.startsWith(globalAgentDir);
-	}
 
 	// Capture all local tools for fallback
 	const localRead = createReadTool(localCwd);
@@ -327,23 +314,12 @@ export default function (pi: ExtensionAPI): void {
 	// path.resolve() treats paths starting with "/" as current-drive-rooted paths,
 	// converting /workspace/foo -> C:\workspace\foo. This corroded the paths
 	// before they reached the operations.
-	//
-	// HOST RESOURCE PATHS (~/.pi/agent/):
-	// Skills, settings, auth, and prompts live in ~/.pi/agent/ on the host
-	// and are NOT mounted into the container. When the agent reads a skill file,
-	// the overridden read tool would call podman exec cat <path> inside the
-	// container where the file doesn't exist. The isPiAgentPath() check below
-	// detects these paths and falls back to local (host) execution.
 
 	pi.registerTool({
 		...localRead,
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localRead.execute(id, params, signal, onUpdate);
-			// Fall back to local for host resource paths (skills, settings, etc.)
-			if (params.path && isPiAgentPath(params.path)) {
-				return localRead.execute(id, params, signal, onUpdate);
-			}
 			return createReadTool(localCwd, { operations: createPodmanReadOps(ops.containerName, ops.pathMapper) })
 				.execute(id, params, signal, onUpdate);
 		},
@@ -354,10 +330,6 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localWrite.execute(id, params, signal, onUpdate);
-			// Fall back to local for host resource paths
-			if (params.path && isPiAgentPath(params.path)) {
-				return localWrite.execute(id, params, signal, onUpdate);
-			}
 			return createWriteTool(localCwd, { operations: createPodmanWriteOps(ops.containerName, ops.pathMapper) })
 				.execute(id, params, signal, onUpdate);
 		},
@@ -368,10 +340,6 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localEdit.execute(id, params, signal, onUpdate);
-			// Fall back to local for host resource paths
-			if (params.path && isPiAgentPath(params.path)) {
-				return localEdit.execute(id, params, signal, onUpdate);
-			}
 			return createEditTool(localCwd, { operations: createPodmanEditOps(ops.containerName, ops.pathMapper) })
 				.execute(id, params, signal, onUpdate);
 		},
@@ -392,10 +360,6 @@ export default function (pi: ExtensionAPI): void {
 		async execute(_id, params, signal, _onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localGrep.execute(_id, params, signal, _onUpdate);
-			// Fall back to local for host resource paths
-			if (params.path && isPiAgentPath(params.path)) {
-				return localGrep.execute(_id, params, signal, _onUpdate);
-			}
 			return executePodmanGrep(ops.containerName, params, signal, ops.pathMapper);
 		},
 	});
@@ -405,11 +369,6 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localFind.execute(id, params, signal, onUpdate);
-
-			// Fall back to local for host resource paths
-			if (params.path && isPiAgentPath(params.path)) {
-				return localFind.execute(id, params, signal, onUpdate);
-			}
 
 			// Bypass SDK's createFindTool + resolveToCwd: on Windows, node:path
 			// converts Linux container paths to Windows drive-rooted paths.
@@ -426,11 +385,6 @@ export default function (pi: ExtensionAPI): void {
 			const ops = getContainerOps();
 			if (!ops) return localLs.execute(id, params, signal, onUpdate);
 
-			// Fall back to local for host resource paths
-			if (params.path && isPiAgentPath(params.path)) {
-				return localLs.execute(id, params, signal, onUpdate);
-			}
-
 			// Same as find: use localCwd so resolveToCwd works with native Windows paths.
 			// The LsOperations translate host paths to container paths internally.
 			return createLsTool(localCwd, { operations: createPodmanLsOps(ops.containerName, ops.pathMapper) })
@@ -443,8 +397,6 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("user_bash", (event) => {
 		const ops = getContainerOps();
 		if (!ops) return;
-		// Don't route into container if cwd is a host resource path
-		if (event.cwd && isPiAgentPath(event.cwd)) return;
 		// The ops factory translates host→container internally. Pass event.cwd as-is.
 		const inner = createPodmanBashOps(ops.containerName, ops.pathMapper);
 		return {

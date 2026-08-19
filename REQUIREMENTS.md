@@ -117,3 +117,38 @@ to rebuild the container from devcontainer config and re-attach without restarti
 - pi's built-in `createBashTool()` / `createReadTool()` etc.
 - `@devcontainers/cli` (installed via npx on first use)
 - `podman` CLI
+
+## Devcontainer Configuration
+
+### Required: Mount `~/.pi/` into the container
+
+All tool calls (read, write, bash, etc.) are routed into the container via `podman exec`. Skills, settings, auth, and prompts live in `~/.pi/` on the **host** filesystem. If this directory is not mounted into the container, the agent will fail to read skill files, settings, and other resources.
+
+> **Note:** This mount is for **your project's** `.devcontainer/devcontainer.json`, not this repo's. This repo's config is for development and CI, which don't need skills.
+
+Add a bind mount to your project's `.devcontainer/devcontainer.json`:
+
+
+```json
+"mounts": [
+  "source=${localEnv:HOME}/.pi,target=${localEnv:HOME}/.pi,type=bind,consistency=cached"
+]
+```
+
+This mounts the host's `~/.pi/` into the container at the same path. The `${localEnv:HOME}` variable expands to the host user's home directory.
+
+Without this mount, the following resources will be **inaccessible** inside the container:
+
+| Resource | Host Path | Effect if not mounted |
+|----------|-----------|-----------------------|
+| Skills | `~/.pi/agent/skills/` | Agent can't read SKILL.md files |
+| Settings | `~/.pi/agent/settings.json` | Global settings unavailable |
+| Auth | `~/.pi/agent/auth.json` | Credentials unavailable |
+| Prompts | `~/.pi/agent/prompts/` | Prompt templates broken |
+| Extensions | `~/.pi/agent/extensions/` | Global extensions can't load scripts |
+| Themes | `~/.pi/agent/themes/` | Custom themes unavailable |
+| Sessions | `~/.pi/sessions/` | Session history and state unavailable |
+
+### Why mount instead of local fallback?
+
+An alternative approach would be to detect unmapped paths and fall back to local (host) execution. This was attempted but abandoned because it creates an inconsistent experience: the agent sees some paths work in-container and some locally, without any way to distinguish which is which. Mounting ensures **all** tool calls go through the same podman exec path, giving the agent a uniform environment.
