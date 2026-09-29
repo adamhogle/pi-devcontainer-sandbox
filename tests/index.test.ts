@@ -449,7 +449,7 @@ describe("extension entry point (index.ts)", () => {
       expect(result).toBeUndefined();
     });
 
-    it("replaces cwd in system prompt when container resolves", async () => {
+    it("edits systemPromptOptions.cwd to the container cwd and returns nothing", async () => {
       const scope = createMockPi();
       extensionFactory(scope.api);
 
@@ -470,16 +470,20 @@ describe("extension entry point (index.ts)", () => {
       await startHandler({ sessionId: "test" }, scope.ctx);
 
       const handler = scope.getHandler("before_agent_start")!;
-      const event = { systemPrompt: "Current working directory: /workspaces/pi-sandbox" };
+      const event = {
+        systemPrompt: "ignored",
+        systemPromptOptions: { cwd: "/host/project", sections: { other: "keep me" } },
+      };
       const result = handler(event);
-      expect(result).toBeDefined();
-      // The prompt should mention "dev container" now
-      if (result?.systemPrompt) {
-        expect(result.systemPrompt).toContain("dev container");
-      }
+
+      // Returning a systemPrompt sets forceSystemPrompt, replacing the whole
+      // prompt and clobbering other extensions' sections. Editing the options
+      // in place preserves them.
+      expect(result).toBeUndefined();
+      expect(event.systemPromptOptions.cwd).toBe("/workspace");
     });
 
-    it("appends container line when cwd not in prompt", async () => {
+    it("removes the host-only docs section without touching other sections", async () => {
       const scope = createMockPi();
       extensionFactory(scope.api);
 
@@ -500,10 +504,17 @@ describe("extension entry point (index.ts)", () => {
       await startHandler({ sessionId: "test" }, scope.ctx);
 
       const handler = scope.getHandler("before_agent_start")!;
-      const event = { systemPrompt: "Some other prompt without cwd" };
-      const result = handler(event);
-      expect(result).toBeDefined();
-      expect(result!.systemPrompt).toContain("dev container");
+      const event = {
+        systemPrompt: "ignored",
+        systemPromptOptions: {
+          cwd: "/host",
+          sections: { docs: "Pi documentation ...", other: "keep me" },
+        },
+      };
+      handler(event);
+
+      expect(event.systemPromptOptions.sections.docs).toBeUndefined();
+      expect(event.systemPromptOptions.sections.other).toBe("keep me");
     });
   });
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0] - 2026-09-25
+
+### Changed
+
+- System prompt integration edits `systemPromptOptions` in place instead of
+  returning a full `systemPrompt`
+  - The working directory becomes the container workspace path and the
+    host-only `docs` section is removed by name
+  - Returning a full prompt set `forceSystemPrompt`, which discarded sections
+    other extensions had contributed; mutating the options preserves them
+- Requires `@earendil-works/pi-coding-agent` 0.87 or newer
+
+### Files
+
+- Modified `index.ts` — `before_agent_start` edits `systemPromptOptions`
+- Bumped the pi peer/dev dependency and added `@types/node` (the 0.87 SDK no
+  longer pulls it transitively, and the tsconfig requires it)
+- Modified `REQUIREMENTS.md`
+
 ## [0.4.0] - 2026-09-25
 
 ### Changed

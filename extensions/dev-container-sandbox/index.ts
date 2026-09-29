@@ -450,13 +450,17 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("before_agent_start", (event) => {
 		const ops = getContainerOps();
 		if (!ops) return;
-		const localLine = `Current working directory: ${localCwd}`;
-		const containerLine = `Current working directory: ${ops.containerCwd} (dev container)`;
-		return {
-			systemPrompt: event.systemPrompt.includes(localLine)
-				? event.systemPrompt.replace(localLine, containerLine)
-				: `${event.systemPrompt}\n\n${containerLine}`,
-		};
+		// Edit the structured options rather than returning a systemPrompt: a
+		// returned prompt becomes forceSystemPrompt, replacing the whole prompt
+		// and discarding sections other extensions contributed. Mutating `cwd`
+		// only moves the working-folder line.
+		event.systemPromptOptions.cwd = ops.containerCwd;
+		// The docs section points at host-only pi install paths that do not exist
+		// in the container, so drop it. Removing the named section leaves every
+		// other section intact, unlike rewriting the assembled prompt string.
+		if ("docs" in event.systemPromptOptions.sections) {
+			delete event.systemPromptOptions.sections.docs;
+		}
 	});
 
 	// ── /dev-container command ────────────────────────────────────────────
