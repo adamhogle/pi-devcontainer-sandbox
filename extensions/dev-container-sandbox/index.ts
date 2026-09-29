@@ -166,39 +166,36 @@ interface ContainerInfo {
 	remoteUser?: string;
 }
 
-/** Fast path: scan running podman containers for one with the project mounted. */
+/** Fast path: find a running container explicitly labelled for this project folder.
+ *
+ * Only `devcontainer.local_folder` counts. A container whose mount happens to
+ * cover the folder (for example a VS Code container started for a parent
+ * directory) is not attached to, so the fast path can never pick the wrong
+ * container. The label is compared without relying on podman's case handling,
+ * so Windows and WSL forms of the same folder both match. */
 async function findDevContainer(
 	localCwd: string,
 	signal?: AbortSignal,
 ): Promise<ContainerInfo | null> {
-	const ps = await podmanExec(["ps", "-q", "--noheading"], signal);
-	if (!ps.stdout) return null;
-
-	const ids = ps.stdout.split("\n").filter((l) => l.trim());
-	const normCwd = normalizePath(localCwd);
-	const cwdVariants = [normCwd, windowsToWslPath(normCwd)].filter(Boolean) as string[];
+	const ids = new Set<string>();
+	for (const variant of folderLabelVariants(localCwd)) {
+		try {
+			const ps = await podmanExec(
+				["ps", "-q", "--noheading", "--filter", `label=devcontainer.local_folder=${variant}`],
+				signal,
+			);
+			for (const line of ps.stdout.split("\n")) {
+				const id = line.trim();
+				if (id !== "") ids.add(id);
+			}
+		} catch { continue; }
+	}
 
 	for (const id of ids) {
 		try {
-			const mounts = await getContainerMounts(id.trim());
-			let bestMatch: (typeof mounts)[0] | null = null;
-			let bestLen = 0;
-
-			for (const mount of mounts) {
-				const normSource = normalizePath(mount.source);
-				const sourceSep = normSource.endsWith("/") ? normSource : normSource + "/";
-				for (const cv of cwdVariants) {
-					const cwdSep = cv.endsWith("/") ? cv : cv + "/";
-					if (cwdSep === sourceSep || cwdSep.startsWith(sourceSep)) {
-						if (normSource.length > bestLen) { bestLen = normSource.length; bestMatch = mount; }
-					}
-				}
-			}
-
-			if (bestMatch) {
-				const pathMapper = createPathMapper(localCwd, mounts);
-				return { containerName: id.trim(), containerCwd: pathMapper.containerCwd, pathMapper };
-			}
+			const mounts = await getContainerMounts(id);
+			const pathMapper = createPathMapper(localCwd, mounts);
+			return { containerName: id, containerCwd: pathMapper.containerCwd, pathMapper };
 		} catch { continue; }
 	}
 	return null;
@@ -214,6 +211,33 @@ function windowsToWslPath(p: string): string | null {
 	const match = p.match(/^([A-Za-z]):(\/.*)$/);
 	if (!match) return null;
 	return `/mnt/${match[1].toLowerCase()}${match[2]}`;
+}
+
+function wslToWindowsPath(p: string): string | null {
+	const match = p.match(/^\/mnt\/([a-z])\/(.*)$/);
+	if (!match) return null;
+	return `${match[1].toUpperCase()}:/${match[2]}`;
+}
+
+/** Forms of the folder a devcontainer CLI container might label itself with.
+ *
+ * Covers the native path, its Windows/WSL counterpart and both drive-letter
+ * cases, so a container created on either side of the boundary is recognised. */
+function folderLabelVariants(localCwd: string): string[] {
+	const normalized = normalizePath(localCwd);
+	const variants = new Set<string>([normalized]);
+	const wsl = windowsToWslPath(normalized);
+	if (wsl != null) variants.add(wsl);
+	const windows = wslToWindowsPath(normalized);
+	if (windows != null) variants.add(windows);
+	for (const variant of [...variants]) {
+		const drive = variant.match(/^([A-Za-z]):\//);
+		if (drive != null) {
+			variants.add(drive[1].toLowerCase() + variant.slice(1));
+			variants.add(drive[1].toUpperCase() + variant.slice(1));
+		}
+	}
+	return [...variants];
 }
 
 // ─── Extension factory (sync) ───────────────────────────────────────────────

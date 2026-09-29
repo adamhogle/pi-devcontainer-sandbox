@@ -18,12 +18,12 @@ A pi extension that routes all built-in tools (read, write, edit, bash, grep, fi
 
 On `session_start`, the extension:
 1. Checks if `.devcontainer/devcontainer.json` exists in the project
-2. If yes, runs `podman ps -q` to list running containers
-3. For each running container, runs `podman inspect <id> --format '{{json .Mounts}}'`
-4. Checks if any mount source matches the project directory (with Windows → WSL path conversion)
-5. If a match is found, extracts the container ID and workspace folder, then attaches
-6. If no match, runs `npx @devcontainers/cli up --docker-path podman` to build and start the container
-7. If devcontainer up also fails, reports the error and falls back to host mode
+2. If yes, queries running containers for a `devcontainer.local_folder` label equal to the project folder, trying the native, Windows and WSL forms
+3. For a container that carries the label, reads its mounts to build the path mapper and attaches
+4. If no container matches, runs `npx @devcontainers/cli up --docker-path podman` to build and start the container
+5. If devcontainer up also fails, reports the error and falls back to host mode
+
+Attachment is by explicit `devcontainer.local_folder` identity only. A container whose bind mount merely covers the folder (for example a VS Code container started for a parent directory) is not attached to, so a stray mount can never redirect the tools.
 
 ### Manual override
 
@@ -169,7 +169,7 @@ to rebuild the container from devcontainer config and re-attach without restarti
 ### Auto-detection order
 
 1. Check `.devcontainer/devcontainer.json` exists
-2. Fast path: scan running podman containers via `podman ps` + `inspect` for one with the project mounted
+2. Fast path: find a running container whose `devcontainer.local_folder` label matches the project folder
 3. If not found: run `devcontainer up` to build/start the container
 4. If everything fails: host mode
 
