@@ -119,7 +119,13 @@ When a container is active, `!command` and `!!command` are routed into the conta
 
 ### System prompt
 
-The system prompt's `Current working directory` line is updated to show the container workspace path instead of the host path.
+When a container is active, the extension edits the structured
+`systemPromptOptions` in place: the working directory is set to the container
+workspace path and the `docs` section (which points at host-only pi install
+paths that do not exist in the container) is removed by name. The assembled
+prompt is never replaced as a whole, so sections other extensions contribute
+survive. Requires pi 0.87 or newer, where `systemPromptOptions` is mutable and
+the prompt is rendered from it after handlers run.
 
 ### Status command
 

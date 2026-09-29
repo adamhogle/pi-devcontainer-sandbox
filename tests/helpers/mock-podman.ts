@@ -104,13 +104,13 @@ export function createMockPodmanState(): MockPodmanState {
       (stdoutEmitter as Record<string, unknown>).destroy = () => {};
       (stdoutEmitter as Record<string, unknown>).destroyed = false;
       (stdoutEmitter as Record<string, unknown>).readable = true;
-      (child as Record<string, unknown>).stdout = stdoutEmitter as typeof child.stdout;
+      (child as Record<string, unknown>).stdout = stdoutEmitter;
 
       const stderrEmitter = new EventEmitter();
       (stderrEmitter as Record<string, unknown>).destroy = () => {};
       (stderrEmitter as Record<string, unknown>).destroyed = false;
       (stderrEmitter as Record<string, unknown>).readable = true;
-      (child as Record<string, unknown>).stderr = stderrEmitter as typeof child.stderr;
+      (child as Record<string, unknown>).stderr = stderrEmitter;
 
       setTimeout(() => {
         if (stdout) stdoutEmitter.emit("data", Buffer.from(stdout));
