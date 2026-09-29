@@ -274,6 +274,20 @@ export default function (pi: ExtensionAPI): void {
 		};
 	};
 
+	type ReadyPayload = {
+		mode: "container" | "host";
+		containerId?: string;
+		containerCwd?: string;
+		remoteUser?: string;
+		reason?: string;
+	};
+
+	/** Announce that a mode has been chosen, once detection has finished. Other
+	 * extensions can wait for this signal instead of polling container state. */
+	const announceReady = (payload: ReadyPayload): void => {
+		pi.events.emit("devcontainer:ready", { workspaceFolder: localCwd, ...payload });
+	};
+
 	// ── session_start: detect container ───────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -288,6 +302,7 @@ export default function (pi: ExtensionAPI): void {
 				const pathMapper = createPathMapper(localCwd, mounts);
 				const remoteUser = await getContainerRemoteUser(containerFlag);
 				resolvedContainer = { containerName: containerFlag, containerCwd: pathMapper.containerCwd, pathMapper, remoteUser: remoteUser ?? undefined };
+				announceReady({ mode: "container", containerId: containerFlag, containerCwd: pathMapper.containerCwd, remoteUser: remoteUser ?? undefined });
 				ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${containerFlag.slice(0, 12)}:${pathMapper.containerCwd}`));
 				ctx.ui.notify(`Tools routed into container: ${containerFlag.slice(0, 12)}`, "info");
 				return;
@@ -295,6 +310,7 @@ export default function (pi: ExtensionAPI): void {
 
 			// Check if devcontainer config exists
 			if (!existsSync(path.join(localCwd, ".devcontainer", "devcontainer.json"))) {
+				announceReady({ mode: "host", reason: "no-devcontainer" });
 				ctx.ui.notify("No .devcontainer — using host mode", "info");
 				return;
 			}
@@ -304,6 +320,7 @@ export default function (pi: ExtensionAPI): void {
 			if (existing) {
 				const remoteUser = await getContainerRemoteUser(existing.containerName);
 				resolvedContainer = { ...existing, remoteUser: remoteUser ?? undefined };
+				announceReady({ mode: "container", containerId: existing.containerName, containerCwd: existing.containerCwd, remoteUser: remoteUser ?? undefined });
 				const label = `${existing.containerName.slice(0, 12)}:${existing.containerCwd}`;
 				ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 				ctx.ui.notify(`Attached to dev container: ${label}`, "info");
@@ -311,20 +328,24 @@ export default function (pi: ExtensionAPI): void {
 			}
 
 			// Build path: run devcontainer up to build/start
+			ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", "🐳 starting…"));
 			ctx.ui.notify("Starting dev container (this may take a while)...", "info");
 			const result = await runDevContainerUp(localCwd, false);
 			if (!result.containerId) {
+				announceReady({ mode: "host", reason: "no-container-id" });
 				ctx.ui.notify("devcontainer up succeeded but no container ID returned. Using host mode.", "warning");
 				return;
 			}
 			const mounts = await getContainerMounts(result.containerId);
 			const pathMapper = createPathMapper(localCwd, mounts);
 			resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper, remoteUser: result.remoteUser || undefined };
+			announceReady({ mode: "container", containerId: result.containerId, containerCwd: result.remoteWorkspaceFolder, remoteUser: result.remoteUser || undefined });
 			const label = `${result.containerId.slice(0, 12)}:${result.remoteWorkspaceFolder}`;
 			ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 			ctx.ui.notify(`Attached to dev container: ${label}`, "info");
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
+			announceReady({ mode: "host", reason: msg });
 			ctx.ui.notify(
 				containerFlag != null
 					? `Container "${containerFlag}" failed: ${msg}. Using host mode.`
@@ -476,10 +497,12 @@ export default function (pi: ExtensionAPI): void {
 					ctx.ui.notify("No .devcontainer found — nothing to rebuild", "error");
 					return;
 				}
+				ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", "🐳 rebuilding…"));
 				ctx.ui.notify("Rebuilding dev container...", "info");
 				try {
 					const result = await runDevContainerUp(localCwd, true);
 					if (!result.containerId) {
+						announceReady({ mode: "host", reason: "rebuild-no-container-id" });
 						ctx.ui.notify("Rebuild succeeded but no container ID returned. Using host mode.", "warning");
 						resolvedContainer = null;
 						ctx.ui.setStatus("dev-container", undefined);
@@ -488,11 +511,13 @@ export default function (pi: ExtensionAPI): void {
 					const mounts = await getContainerMounts(result.containerId);
 					const pathMapper = createPathMapper(localCwd, mounts);
 					resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper, remoteUser: result.remoteUser || undefined };
+					announceReady({ mode: "container", containerId: result.containerId, containerCwd: result.remoteWorkspaceFolder, remoteUser: result.remoteUser || undefined });
 					const label = `${result.containerId.slice(0, 12)}:${result.remoteWorkspaceFolder}`;
 					ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 					ctx.ui.notify(`Rebuilt and re-attached: ${label}`, "success");
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
+					announceReady({ mode: "host", reason: `rebuild: ${msg}` });
 					ctx.ui.notify(`Rebuild failed: ${msg}. Dropping to host mode.`, "error");
 					resolvedContainer = null;
 					ctx.ui.setStatus("dev-container", undefined);

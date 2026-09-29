@@ -321,6 +321,82 @@ describe("extension entry point (index.ts)", () => {
     });
   });
 
+  describe("readiness signal", () => {
+    it("emits devcontainer:ready with container mode after attaching", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps",
+        { stdout: "cont123\n" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      const ready = scope.events.find((e) => e.channel === "devcontainer:ready");
+      expect(ready).toBeDefined();
+      expect(ready!.data).toMatchObject({
+        mode: "container",
+        containerId: "cont123",
+        containerCwd: "/workspace",
+      });
+    });
+
+    it("emits devcontainer:ready with host mode when no devcontainer config exists", async () => {
+      mockedFs.mockExistsSync.mockReturnValue(false);
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      const ready = scope.events.find((e) => e.channel === "devcontainer:ready");
+      expect(ready).toBeDefined();
+      expect(ready!.data).toMatchObject({ mode: "host" });
+    });
+
+    it("shows progress in the status bar while up runs", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      // No labelled container, so the extension builds.
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps" && c.args.includes("--filter"),
+        { stdout: "" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "@devcontainers/cli",
+        { stdout: '{"outcome":"success","containerId":"new-cont","remoteUser":"vscode","remoteWorkspaceFolder":"/workspace"}\n' },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      expect(
+        scope.statusEntries.some(
+          (s) => s.key === "dev-container" && (s.value ?? "").includes("starting"),
+        ),
+      ).toBe(true);
+    });
+  });
+
   describe("session_start — remote user", () => {
     it("runs user bash as the container remote user read from labels", async () => {
       const scope = createMockPi();

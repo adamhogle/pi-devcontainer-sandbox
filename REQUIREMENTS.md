@@ -135,6 +135,15 @@ the prompt is rendered from it after handlers run.
 
 Shows the current container ID and workspace folder, or reports "host mode".
 
+### Readiness signal
+
+Once detection has finished, the extension emits a `devcontainer:ready` event
+on the shared event bus with a payload describing the chosen mode:
+`{ workspaceFolder, mode: "container" | "host", containerId?, containerCwd?,
+remoteUser?, reason? }`. Other extensions can wait for this instead of polling
+container state. While `devcontainer up` runs, the status bar shows a
+`🐳 starting…` progress indicator in place of the attached-container label.
+
 ## Edge Cases
 
 ### No `.devcontainer` directory
