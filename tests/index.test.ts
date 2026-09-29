@@ -276,6 +276,48 @@ describe("extension entry point (index.ts)", () => {
 
       expect(scope.notifications.some((n) => n.message.includes("Attached"))).toBe(true);
       expect(scope.statusEntries.some((s) => s.key === "dev-container")).toBe(true);
+      // Attachment must be driven by the devcontainer.local_folder label, not
+      // by any container whose mount happens to cover the folder.
+      expect(
+        mockSpawn.calls().some(
+          (c) => c.args[0] === "ps" && c.args.some((a) => a.startsWith("label=devcontainer.local_folder=")),
+        ),
+      ).toBe(true);
+    });
+
+    it("builds when a running container has no matching local_folder label", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      // A stray container exists (plain ps sees it), but no container carries
+      // the matching local_folder label (filtered ps is empty). It must not be
+      // attached to by mount; the extension should build instead.
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps" && c.args.includes("--filter"),
+        { stdout: "" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps",
+        { stdout: "stray-container\n" },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "@devcontainers/cli",
+        { stdout: '{"outcome":"success","containerId":"new-cont","remoteUser":"vscode","remoteWorkspaceFolder":"/workspace"}\n' },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const handler = scope.getHandler("session_start")!;
+      await handler({ sessionId: "test" }, scope.ctx);
+
+      expect(mockSpawn.calls().some((c) => c.args[0] === "@devcontainers/cli")).toBe(true);
+      expect(scope.notifications.some((n) => n.message.includes("Attached"))).toBe(true);
     });
   });
 

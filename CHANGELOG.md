@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0] - 2026-09-25
+
+### Changed
+
+- Container auto-detection now attaches only to a container whose
+  `devcontainer.local_folder` label matches the project folder, instead of
+  any container with a bind mount covering it
+  - Native, Windows and WSL forms of the folder are compared
+  - A stray container (e.g. VS Code started for a parent directory) can no
+    longer redirect the tools
+
+### Files
+
+- Modified `index.ts` — `findDevContainer` filters on the label and gained
+  `folderLabelVariants` / `wslToWindowsPath` helpers
+- Modified `REQUIREMENTS.md` — documents identity-based attachment
+
 ## [0.3.0] - 2026-09-25
 
 ### Added
