@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0] - 2026-09-25
+
+### Added
+
+- Tool operations now run as the dev container's remote user instead of root
+  - The user is read from the `devcontainer.metadata` label (`remoteUser` or `containerUser`), or from the `devcontainer up` result for containers this extension starts
+  - Files written by the agent are owned by the configured dev container user
+
+### Files
+
+- Modified `operations.ts` — added `getContainerRemoteUser`, and an optional `user` parameter threaded through every operation factory and `podman exec` call
+- Modified `index.ts` — resolves the remote user on attach and passes it to all tool operations
+
 ## [0.2.0] - 2026-08-19
 
 ### Added

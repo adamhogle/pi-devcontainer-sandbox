@@ -46,6 +46,7 @@ import {
 	createPodmanWriteOps,
 	executePodmanGrep,
 	getContainerMounts,
+	getContainerRemoteUser,
 } from "./operations";
 
 import type { PathMapper } from "./operations";
@@ -161,6 +162,8 @@ interface ContainerInfo {
 	containerName: string;
 	containerCwd: string;
 	pathMapper: PathMapper;
+	/** Dev container remote user to run `podman exec` as, when known. */
+	remoteUser?: string;
 }
 
 /** Fast path: scan running podman containers for one with the project mounted. */
@@ -243,6 +246,7 @@ export default function (pi: ExtensionAPI): void {
 			containerName: resolvedContainer.containerName,
 			containerCwd: resolvedContainer.containerCwd,
 			pathMapper: resolvedContainer.pathMapper,
+			remoteUser: resolvedContainer.remoteUser,
 		};
 	};
 
@@ -258,7 +262,8 @@ export default function (pi: ExtensionAPI): void {
 			if (containerFlag != null) {
 				const mounts = await getContainerMounts(containerFlag);
 				const pathMapper = createPathMapper(localCwd, mounts);
-				resolvedContainer = { containerName: containerFlag, containerCwd: pathMapper.containerCwd, pathMapper };
+				const remoteUser = await getContainerRemoteUser(containerFlag);
+				resolvedContainer = { containerName: containerFlag, containerCwd: pathMapper.containerCwd, pathMapper, remoteUser: remoteUser ?? undefined };
 				ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${containerFlag.slice(0, 12)}:${pathMapper.containerCwd}`));
 				ctx.ui.notify(`Tools routed into container: ${containerFlag.slice(0, 12)}`, "info");
 				return;
@@ -273,7 +278,8 @@ export default function (pi: ExtensionAPI): void {
 			// Fast path: check already-running containers
 			const existing = await findDevContainer(localCwd);
 			if (existing) {
-				resolvedContainer = existing;
+				const remoteUser = await getContainerRemoteUser(existing.containerName);
+				resolvedContainer = { ...existing, remoteUser: remoteUser ?? undefined };
 				const label = `${existing.containerName.slice(0, 12)}:${existing.containerCwd}`;
 				ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 				ctx.ui.notify(`Attached to dev container: ${label}`, "info");
@@ -289,7 +295,7 @@ export default function (pi: ExtensionAPI): void {
 			}
 			const mounts = await getContainerMounts(result.containerId);
 			const pathMapper = createPathMapper(localCwd, mounts);
-			resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper };
+			resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper, remoteUser: result.remoteUser || undefined };
 			const label = `${result.containerId.slice(0, 12)}:${result.remoteWorkspaceFolder}`;
 			ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 			ctx.ui.notify(`Attached to dev container: ${label}`, "info");
@@ -327,7 +333,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localRead.execute(id, params, signal, onUpdate);
-			return createReadTool(localCwd, { operations: createPodmanReadOps(ops.containerName, ops.pathMapper) })
+			return createReadTool(localCwd, { operations: createPodmanReadOps(ops.containerName, ops.pathMapper, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -337,7 +343,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localWrite.execute(id, params, signal, onUpdate);
-			return createWriteTool(localCwd, { operations: createPodmanWriteOps(ops.containerName, ops.pathMapper) })
+			return createWriteTool(localCwd, { operations: createPodmanWriteOps(ops.containerName, ops.pathMapper, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -347,7 +353,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localEdit.execute(id, params, signal, onUpdate);
-			return createEditTool(localCwd, { operations: createPodmanEditOps(ops.containerName, ops.pathMapper) })
+			return createEditTool(localCwd, { operations: createPodmanEditOps(ops.containerName, ops.pathMapper, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -357,7 +363,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(id, params, signal, onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localBash.execute(id, params, signal, onUpdate);
-			return createBashTool(localCwd, { operations: createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv) })
+			return createBashTool(localCwd, { operations: createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -367,7 +373,7 @@ export default function (pi: ExtensionAPI): void {
 		async execute(_id, params, signal, _onUpdate, _ctx) {
 			const ops = getContainerOps();
 			if (!ops) return localGrep.execute(_id, params, signal, _onUpdate);
-			return executePodmanGrep(ops.containerName, params, signal, ops.pathMapper);
+			return executePodmanGrep(ops.containerName, params, signal, ops.pathMapper, ops.remoteUser);
 		},
 	});
 
@@ -381,7 +387,7 @@ export default function (pi: ExtensionAPI): void {
 			// converts Linux container paths to Windows drive-rooted paths.
 			// Use localCwd for the SDK tool, but the find operation receives a pathMapper
 			// and translates internally.
-			return createFindTool(localCwd, { operations: createPodmanFindOps(ops.containerName, ops.pathMapper) })
+			return createFindTool(localCwd, { operations: createPodmanFindOps(ops.containerName, ops.pathMapper, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -394,7 +400,7 @@ export default function (pi: ExtensionAPI): void {
 
 			// Same as find: use localCwd so resolveToCwd works with native Windows paths.
 			// The LsOperations translate host paths to container paths internally.
-			return createLsTool(localCwd, { operations: createPodmanLsOps(ops.containerName, ops.pathMapper) })
+			return createLsTool(localCwd, { operations: createPodmanLsOps(ops.containerName, ops.pathMapper, ops.remoteUser) })
 				.execute(id, params, signal, onUpdate);
 		},
 	});
@@ -405,7 +411,7 @@ export default function (pi: ExtensionAPI): void {
 		const ops = getContainerOps();
 		if (!ops) return;
 		// The ops factory translates host→container internally. Pass event.cwd as-is.
-		const inner = createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv);
+		const inner = createPodmanBashOps(ops.containerName, ops.pathMapper, forwardedEnv, ops.remoteUser);
 		return {
 			operations: {
 				exec(cmd: string, _cwd: string, opts: Parameters<BashOperations["exec"]>[2]) {
@@ -453,7 +459,7 @@ export default function (pi: ExtensionAPI): void {
 					}
 					const mounts = await getContainerMounts(result.containerId);
 					const pathMapper = createPathMapper(localCwd, mounts);
-					resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper };
+					resolvedContainer = { containerName: result.containerId, containerCwd: result.remoteWorkspaceFolder, pathMapper, remoteUser: result.remoteUser || undefined };
 					const label = `${result.containerId.slice(0, 12)}:${result.remoteWorkspaceFolder}`;
 					ctx.ui.setStatus("dev-container", ctx.ui.theme.fg("accent", `🐳 ${label}`));
 					ctx.ui.notify(`Rebuilt and re-attached: ${label}`, "success");

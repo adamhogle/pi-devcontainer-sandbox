@@ -233,6 +233,28 @@ describe("createPodmanBashOps", () => {
       expect(envVals).toHaveLength(3);
     });
 
+    it("runs as the remote user with -u before the container", async () => {
+      const ops = createPodmanBashOps("test-container", testMapper, undefined, "vscode");
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("whoami", "C:/project", { onData: dummyOnData });
+
+      const args = mock.call(0).args;
+      const containerIndex = args.indexOf("test-container");
+      expect(args.indexOf("-u")).toBeGreaterThanOrEqual(0);
+      expect(args.indexOf("-u")).toBeLessThan(containerIndex);
+      expect(args[args.indexOf("-u") + 1]).toBe("vscode");
+    });
+
+    it("omits -u when no remote user is configured", async () => {
+      const ops = createPodmanBashOps("test-container", testMapper);
+      mock.respondWhen(() => true, { stdout: "ok\n" });
+
+      await ops.exec("whoami", "C:/project", { onData: dummyOnData });
+
+      expect(mock.call(0).args).not.toContain("-u");
+    });
+
     it("env vars appear in correct position before container and command", async () => {
       const ops = createPodmanBashOps("test-container", undefined, {
         KEY: "val",

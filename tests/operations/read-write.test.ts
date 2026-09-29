@@ -131,6 +131,19 @@ describe("createPodmanReadOps", () => {
     expect(mock.call(0).args).toContain("/Users/Test/project/src/main.ts");
   });
 
+  it("passes -u with the remote user before the container", async () => {
+    const ops = createPodmanReadOps("test-container", testMapper, "vscode");
+    mock.respondWhen((c) => c.args.includes("cat"), { stdout: "contents" });
+
+    await ops.readFile("C:/Users/Test/project/file.ts");
+
+    const args = mock.call(0).args;
+    const containerIndex = args.indexOf("test-container");
+    expect(args.indexOf("-u")).toBeGreaterThanOrEqual(0);
+    expect(args.indexOf("-u")).toBeLessThan(containerIndex);
+    expect(args[args.indexOf("-u") + 1]).toBe("vscode");
+  });
+
   it("readFile passes path as-is without pathMapper", async () => {
     const ops = createPodmanReadOps("test-container");
     mock.respondWhen((c) => c.args.includes("cat"), { stdout: "content" });

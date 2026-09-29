@@ -279,6 +279,54 @@ describe("extension entry point (index.ts)", () => {
     });
   });
 
+  describe("session_start — remote user", () => {
+    it("runs user bash as the container remote user read from labels", async () => {
+      const scope = createMockPi();
+      extensionFactory(scope.api);
+
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "ps",
+        { stdout: "cont123\n" },
+      );
+      // Labels inspection carries the devcontainer metadata; match it before
+      // the generic mounts responder below.
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect" && c.args.includes("{{json .Config.Labels}}"),
+        {
+          stdout: JSON.stringify({
+            "devcontainer.metadata": JSON.stringify([{ remoteUser: "vscode" }]),
+          }),
+        },
+      );
+      mockSpawn.respondWhen(
+        (c) => c.args[0] === "inspect",
+        {
+          stdout: JSON.stringify([
+            { Source: process.cwd(), Destination: "/workspace", Type: "bind" },
+          ]),
+        },
+      );
+
+      const startHandler = scope.getHandler("session_start")!;
+      await startHandler({ sessionId: "test" }, scope.ctx);
+
+      const bashHandler = scope.getHandler("user_bash")!;
+      const opsResult = bashHandler({ cwd: process.cwd() }) as {
+        operations: { exec: (cmd: string, cwd: string, opts: { onData: () => void }) => Promise<unknown> };
+      };
+      mockSpawn.respondWhen(() => true, { stdout: "done\n" });
+      await opsResult.operations.exec("echo ok", process.cwd(), { onData: () => {} });
+
+      const execCall = mockSpawn.calls().find((c) => c.args[0] === "exec" && c.args.includes("-u"));
+      expect(execCall).toBeDefined();
+      const userIndex = execCall!.args.indexOf("-u");
+      const containerIndex = execCall!.args.indexOf("cont123");
+      expect(userIndex).toBeGreaterThanOrEqual(0);
+      expect(userIndex).toBeLessThan(containerIndex);
+      expect(execCall!.args[userIndex + 1]).toBe("vscode");
+    });
+  });
+
   describe("session_shutdown", () => {
     it("resets resolved container state", async () => {
       const scope = createMockPi();

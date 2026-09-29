@@ -62,6 +62,7 @@ vi.mock("node:child_process", () => ({ spawn: mock.spawnFn }));
 import {
   getContainerWorkingDir,
   getContainerMounts,
+  getContainerRemoteUser,
 } from "../../extensions/dev-container-sandbox/operations.ts";
 
 describe("getContainerWorkingDir", () => {
@@ -169,5 +170,78 @@ describe("getContainerMounts", () => {
 
     const mounts = await getContainerMounts("test-container");
     expect(mounts).toEqual([]);
+  });
+});
+
+describe("getContainerRemoteUser", () => {
+  beforeEach(() => mock.reset());
+
+  it("reads remoteUser from the devcontainer.metadata label", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      {
+        stdout: JSON.stringify({
+          "devcontainer.metadata": JSON.stringify([{ remoteUser: "vscode" }]),
+        }),
+      },
+    );
+
+    expect(await getContainerRemoteUser("test-container")).toBe("vscode");
+  });
+
+  it("honours the last remoteUser or containerUser fragment", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      {
+        stdout: JSON.stringify({
+          "devcontainer.metadata": JSON.stringify([
+            { containerUser: "root" },
+            { remoteUser: "vscode" },
+          ]),
+        }),
+      },
+    );
+
+    expect(await getContainerRemoteUser("test-container")).toBe("vscode");
+  });
+
+  it("falls back to containerUser when remoteUser is absent", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      {
+        stdout: JSON.stringify({
+          "devcontainer.metadata": JSON.stringify([{ containerUser: "node" }]),
+        }),
+      },
+    );
+
+    expect(await getContainerRemoteUser("test-container")).toBe("node");
+  });
+
+  it("returns null when the metadata label is absent", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      { stdout: JSON.stringify({ "pi.box.folder": "/host/project" }) },
+    );
+
+    expect(await getContainerRemoteUser("test-container")).toBeNull();
+  });
+
+  it("returns null on podman inspect failure", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      { stdout: "", exitCode: 1 },
+    );
+
+    expect(await getContainerRemoteUser("bad-container")).toBeNull();
+  });
+
+  it("returns null on JSON parse error", async () => {
+    mock.respondWhen(
+      (c) => c.args[0] === "inspect",
+      { stdout: "not valid json" },
+    );
+
+    expect(await getContainerRemoteUser("test-container")).toBeNull();
   });
 });

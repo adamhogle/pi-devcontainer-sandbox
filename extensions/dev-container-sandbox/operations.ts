@@ -138,10 +138,14 @@ function windowsToWslPath(p: string): string | null {
 /**
  * Run a podman exec command and capture stdout as a Buffer.
  * Throws on non-zero exit.
+ *
+ * When `user` is set, `-u <user>` is inserted before the container name so the
+ * command runs as the dev container's remote user rather than root.
  */
-function podmanExec(container: string, args: string[], signal?: AbortSignal): Promise<Buffer> {
+function podmanExec(container: string, args: string[], signal?: AbortSignal, user?: string): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
-		const child = spawn("podman", ["exec", container, ...args], {
+		const userArgs = user !== undefined && user !== "" ? ["-u", user] : [];
+		const child = spawn("podman", ["exec", ...userArgs, container, ...args], {
 			stdio: ["ignore", "pipe", "pipe"],
 			signal,
 		});
@@ -172,38 +176,38 @@ export async function getContainerWorkingDir(container: string): Promise<string>
 	return buf.toString().trim() || "/";
 }
 
+/** Run `podman inspect` with a Go-template format and capture stdout. */
+async function podmanInspect(container: string, format: string): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const child = spawn("podman", ["inspect", container, "--format", format], {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		const chunks: Buffer[] = [];
+		const errChunks: Buffer[] = [];
+		child.stdout.on("data", (data: Buffer) => chunks.push(data));
+		child.stderr.on("data", (data: Buffer) => errChunks.push(data));
+		child.on("error", reject);
+		child.on("close", (code) => {
+			if (code !== 0) {
+				reject(
+					new Error(
+						`podman inspect failed (${code}): ${Buffer.concat(errChunks).toString().trim()}`,
+					),
+				);
+			} else {
+				resolve(Buffer.concat(chunks));
+			}
+		});
+	});
+}
+
 /**
  * Query podman for all bind mount info.
  * Uses `podman inspect` from the host to get proper host-side source paths.
  */
 export async function getContainerMounts(container: string): Promise<MountInfo[]> {
 	try {
-		const buf = await new Promise<Buffer>((resolve, reject) => {
-			const child = spawn("podman", [
-				"inspect",
-				container,
-				"--format",
-				"{{json .Mounts}}",
-			], {
-				stdio: ["ignore", "pipe", "pipe"],
-			});
-			const chunks: Buffer[] = [];
-			const errChunks: Buffer[] = [];
-			child.stdout.on("data", (data: Buffer) => chunks.push(data));
-			child.stderr.on("data", (data: Buffer) => errChunks.push(data));
-			child.on("error", reject);
-			child.on("close", (code) => {
-				if (code !== 0) {
-					reject(
-						new Error(
-							`podman inspect mounts failed (${code}): ${Buffer.concat(errChunks).toString().trim()}`,
-						),
-					);
-				} else {
-					resolve(Buffer.concat(chunks));
-				}
-			});
-		});
+		const buf = await podmanInspect(container, "{{json .Mounts}}");
 
 		const parsed = JSON.parse(buf.toString().trim()) as Array<{
 			Source: string;
@@ -225,9 +229,45 @@ export async function getContainerMounts(container: string): Promise<MountInfo[]
 	}
 }
 
+/**
+ * Resolve the dev container's remote user from its `devcontainer.metadata`
+ * label. The label is a JSON object or array of config fragments; scan them
+ * last-wins for `remoteUser` or `containerUser`, matching how dev-pi resolves
+ * the user it runs as. Returns null when the label is absent, unparseable or
+ * names no user, so callers can leave the container's default user in place.
+ */
+export async function getContainerRemoteUser(container: string): Promise<string | null> {
+	try {
+		const buf = await podmanInspect(container, "{{json .Config.Labels}}");
+		const labels = JSON.parse(buf.toString().trim()) as Record<string, unknown>;
+		const metadata = labels["devcontainer.metadata"];
+		if (typeof metadata !== "string" || metadata === "") return null;
+		let fragments = JSON.parse(metadata) as unknown;
+		if (!Array.isArray(fragments)) fragments = [fragments];
+
+		let user = "";
+		for (const fragment of fragments) {
+			if (fragment == null || typeof fragment !== "object") continue;
+			const record = fragment as Record<string, unknown>;
+			for (const key of ["containerUser", "remoteUser"]) {
+				const value = record[key];
+				if (typeof value === "string" && value.length > 0) user = value;
+			}
+		}
+		return user || null;
+	} catch {
+		return null;
+	}
+}
+
 // ─── Bash Operations ─────────────────────────────────────────────────────────
 
-export function createPodmanBashOps(container: string, pathMapper?: PathMapper, envVars?: Record<string, string>): BashOperations {
+export function createPodmanBashOps(
+	container: string,
+	pathMapper?: PathMapper,
+	envVars?: Record<string, string>,
+	user?: string,
+): BashOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		exec(command, cwd, { onData, signal, timeout }): Promise<BashOutput> {
@@ -242,8 +282,9 @@ export function createPodmanBashOps(container: string, pathMapper?: PathMapper, 
 						envArgs.push("--env", key);
 					}
 				}
+				const userArgs = user !== undefined && user !== "" ? ["-u", user] : [];
 
-				const child = spawn("podman", ["exec", "-i", ...envArgs, container, "bash", "-lc", fullCommand], {
+				const child = spawn("podman", ["exec", "-i", ...envArgs, ...userArgs, container, "bash", "-lc", fullCommand], {
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 
@@ -287,15 +328,15 @@ export function createPodmanBashOps(container: string, pathMapper?: PathMapper, 
 
 // ─── Read Operations ─────────────────────────────────────────────────────────
 
-export function createPodmanReadOps(container: string, pathMapper?: PathMapper): ReadOperations {
+export function createPodmanReadOps(container: string, pathMapper?: PathMapper, user?: string): ReadOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		async readFile(filePath): Promise<string> {
-			return podmanExec(container, ["cat", toCont(filePath)]);
+			return podmanExec(container, ["cat", toCont(filePath)], undefined, user);
 		},
 
 		async access(filePath: string) {
-			await podmanExec(container, ["test", "-r", toCont(filePath)]);
+			await podmanExec(container, ["test", "-r", toCont(filePath)], undefined, user);
 		},
 
 		async detectImageMimeType(filePath: string) {
@@ -306,7 +347,7 @@ export function createPodmanReadOps(container: string, pathMapper?: PathMapper):
 			if (ext === "gif") return "image/gif";
 			if (ext === "webp") return "image/webp";
 			try {
-				const buf = await podmanExec(container, ["file", "--mime-type", "-b", cp]);
+				const buf = await podmanExec(container, ["file", "--mime-type", "-b", cp], undefined, user);
 				const mime = buf.toString().trim();
 				return ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(mime) ? mime : null;
 			} catch {
@@ -318,7 +359,7 @@ export function createPodmanReadOps(container: string, pathMapper?: PathMapper):
 
 // ─── Write Operations ────────────────────────────────────────────────────────
 
-export function createPodmanWriteOps(container: string, pathMapper?: PathMapper): WriteOperations {
+export function createPodmanWriteOps(container: string, pathMapper?: PathMapper, user?: string): WriteOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		async writeFile(filePath: string, content: string | Buffer): Promise<void> {
@@ -329,20 +370,20 @@ export function createPodmanWriteOps(container: string, pathMapper?: PathMapper)
 				"sh",
 				"-c",
 				`mkdir -p $(dirname ${quote(cp)}) && echo ${quote(b64)} | base64 -d > ${quote(cp)}`,
-			]);
+			], undefined, user);
 		},
 
 		async mkdir(dirPath: string): Promise<void> {
-			await podmanExec(container, ["mkdir", "-p", toCont(dirPath)]);
+			await podmanExec(container, ["mkdir", "-p", toCont(dirPath)], undefined, user);
 		},
 	};
 }
 
 // ─── Edit Operations ─────────────────────────────────────────────────────────
 
-export function createPodmanEditOps(container: string, pathMapper?: PathMapper): EditOperations {
-	const readOps = createPodmanReadOps(container, pathMapper);
-	const writeOps = createPodmanWriteOps(container, pathMapper);
+export function createPodmanEditOps(container: string, pathMapper?: PathMapper, user?: string): EditOperations {
+	const readOps = createPodmanReadOps(container, pathMapper, user);
+	const writeOps = createPodmanWriteOps(container, pathMapper, user);
 	return {
 		readFile: readOps.readFile,
 		writeFile: writeOps.writeFile,
@@ -352,12 +393,12 @@ export function createPodmanEditOps(container: string, pathMapper?: PathMapper):
 
 // ─── Ls Operations ───────────────────────────────────────────────────────────
 
-export function createPodmanLsOps(container: string, pathMapper?: PathMapper): LsOperations {
+export function createPodmanLsOps(container: string, pathMapper?: PathMapper, user?: string): LsOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		async exists(filePath: string): Promise<boolean> {
 			try {
-				await podmanExec(container, ["test", "-e", toCont(filePath)]);
+				await podmanExec(container, ["test", "-e", toCont(filePath)], undefined, user);
 				return true;
 			} catch {
 				return false;
@@ -371,7 +412,7 @@ export function createPodmanLsOps(container: string, pathMapper?: PathMapper): L
 				"--format",
 				'{"mode":"%f","size":%s,"mtime":%Y,"permissions":"%A"}',
 				cp,
-			]);
+			], undefined, user);
 			const data = JSON.parse(buf.toString().trim()) as {
 				mode?: string;
 				size: number;
@@ -395,7 +436,7 @@ export function createPodmanLsOps(container: string, pathMapper?: PathMapper): L
 				"sh",
 				"-c",
 				`ls -1a ${quote(cp)} 2>/dev/null || echo ""`,
-			]);
+			], undefined, user);
 			const entries = buf
 				.toString()
 				.trim()
@@ -408,12 +449,12 @@ export function createPodmanLsOps(container: string, pathMapper?: PathMapper): L
 
 // ─── Find Operations ────────────────────────────────────────────────────────
 
-export function createPodmanFindOps(container: string, pathMapper?: PathMapper): FindOperations {
+export function createPodmanFindOps(container: string, pathMapper?: PathMapper, user?: string): FindOperations {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	return {
 		async exists(filePath: string): Promise<boolean> {
 			try {
-				await podmanExec(container, ["test", "-e", toCont(filePath)]);
+				await podmanExec(container, ["test", "-e", toCont(filePath)], undefined, user);
 				return true;
 			} catch {
 				return false;
@@ -436,7 +477,7 @@ export function createPodmanFindOps(container: string, pathMapper?: PathMapper):
 			}
 
 			const cmd = `find ${quote(searchRoot)} ${pruneClause} -type f -name ${quote(pattern)} -print 2>/dev/null | head -${limit}`;
-			const buf = await podmanExec(container, ["sh", "-c", cmd], options.signal);
+			const buf = await podmanExec(container, ["sh", "-c", cmd], options.signal, user);
 			const lines = buf
 				.toString()
 				.trim()
@@ -470,6 +511,7 @@ export async function executePodmanGrep(
 	params: GrepToolInput,
 	signal?: AbortSignal,
 	pathMapper?: PathMapper,
+	user?: string,
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: GrepToolDetails | undefined }> {
 	const toCont = (p: string): string => pathMapper?.toContainer(p) ?? p;
 	const { pattern, path: searchPath, literal, ignoreCase, context, glob: globPattern, limit } = params;
@@ -495,7 +537,7 @@ export async function executePodmanGrep(
 	const effectiveLimit = Math.max(1, limit ?? 100);
 
 	try {
-		const buf = await podmanExec(container, grepArgs, signal);
+		const buf = await podmanExec(container, grepArgs, signal, user);
 		const raw = buf.toString();
 
 		if (!raw.trim()) {

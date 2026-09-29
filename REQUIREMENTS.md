@@ -47,6 +47,10 @@ All 7 built-in tools are overridden:
 | `find` | `podman exec <container> find ...` |
 | `ls` | `podman exec <container> stat` for single files, `ls -1a` for directories |
 
+### Remote user
+
+Tool operations run as the dev container's remote user rather than root. The user is resolved from the `devcontainer.metadata` label (`remoteUser` or `containerUser`, last fragment wins) or, for containers started by this extension, from the `devcontainer up` result. When no user can be resolved, `podman exec` is left without `-u` and runs as the container's default user. This keeps files written by the agent owned by the user the dev container was configured for.
+
 ### Environment variable forwarding
 When running commands inside the dev container, environment variables from the host
 (API keys, tokens, etc.) are not automatically available. Use env forwarding to pass
