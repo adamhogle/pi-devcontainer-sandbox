@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0] - 2026-09-25
+
+### Added
+
+- `devcontainer:ready` event on the shared event bus once detection finishes,
+  carrying the chosen mode (`container` or `host`) and connection details, so
+  other extensions can wait instead of polling
+- `🐳 starting…` and `🐳 rebuilding…` status-bar progress while
+  `devcontainer up` runs
+
+### Files
+
+- Modified `index.ts` — emit readiness, show build progress
+- Modified `REQUIREMENTS.md`
+
 ## [0.5.0] - 2026-09-25
 
 ### Changed

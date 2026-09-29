@@ -19,6 +19,8 @@ export interface MockPiScope {
   notifications: Array<{ message: string; level: string }>;
   /** UI status entries */
   statusEntries: Array<{ key: string; value: string | undefined }>;
+  /** Events emitted on the shared extension event bus */
+  events: Array<{ channel: string; data: unknown }>;
   /** Simulate setting a flag value */
   setFlag: (name: string, value: unknown) => void;
   /** Get a handler by event name */
@@ -36,6 +38,7 @@ export function createMockPi(): MockPiScope {
   const flags = new Map<string, { description: string; type: string; value?: unknown }>();
   const notifications: Array<{ message: string; level: string }> = [];
   const statusEntries: Array<{ key: string; value: string | undefined }> = [];
+  const events: Array<{ channel: string; data: unknown }> = [];
   const flagValues = new Map<string, unknown>();
 
   const theme = {
@@ -56,6 +59,13 @@ export function createMockPi(): MockPiScope {
   const sessionManager = {
     getSessionId: () => "test-session-id",
     getSessionFile: () => "/tmp/test-session.json",
+  };
+
+  const eventBus = {
+    emit: (channel: string, data: unknown) => {
+      events.push({ channel, data });
+    },
+    on: (_channel: string, _handler: (data: unknown) => void) => () => {},
   };
 
   const ctx = {
@@ -81,6 +91,7 @@ export function createMockPi(): MockPiScope {
       existing.push(handler);
       handlers.set(event, existing);
     },
+    events: eventBus,
   } as unknown as ExtensionAPI;
 
   return {
@@ -92,6 +103,7 @@ export function createMockPi(): MockPiScope {
     flags,
     notifications,
     statusEntries,
+    events,
     setFlag: (name, value) => {
       flagValues.set(name, value);
       const existing = flags.get(name);
